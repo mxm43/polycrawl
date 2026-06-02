@@ -26,7 +26,7 @@ from packages.core.config.watcher import watch_config_dir
 from packages.core.db.models import Account, Creator, Task, TaskRun
 from packages.core.events import publish_event
 from packages.core.sync import sync_creators_to_db
-from services.worker.runtime import get_worker_session_factory
+from packages.core.db import db_get_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +95,11 @@ class Scheduler:
     # ?? lifecycle ????????????????????????????????????????????????
 
     async def start(self) -> None:
-        state = ConfigLoader(CONFIG_DIR).load_all()
-        self._redis = Redis.from_url(state.base.storage.redis_url, decode_responses=True)
+        self._redis = Redis.from_url(redis_get_url(), decode_responses=True)
 
         # Sync creators.jsonc -> DB so live accounts are available
         try:
-            session_factory = get_worker_session_factory()
+            session_factory = db_get_session_factory()
             await sync_creators_to_db(session_factory, state.creators)
         except Exception:
             logger.exception("[scheduler] failed to sync creators to DB")
@@ -197,7 +196,7 @@ class Scheduler:
 
         # Sync creators.jsonc -> DB so new accounts are picked up
         try:
-            session_factory = get_worker_session_factory()
+            session_factory = db_get_session_factory()
             await sync_creators_to_db(session_factory, state.creators)
         except Exception:
             logger.exception("[scheduler] failed to sync creators to DB")
@@ -320,7 +319,7 @@ class Scheduler:
             h.cancel()
         self._live_timers.clear()
 
-        session_factory = get_worker_session_factory()
+        session_factory = db_get_session_factory()
         query = select(Account.id).where(
             Account.account_type == "live",
         )
@@ -387,7 +386,7 @@ class Scheduler:
           - ``("done", aid)``  — recording ended (success or failure)
         No polling, no asyncio.sleep.
         """
-        session_factory = get_worker_session_factory()
+        session_factory = db_get_session_factory()
         while True:
             try:
                 # Block until the first event arrives, then drain any backlog.
@@ -499,7 +498,7 @@ class Scheduler:
         independent queue (``task_{idx}:{platform}``) with its own in-flight
         gate, so platforms never block each other.
         """
-        session_factory = get_worker_session_factory()
+        session_factory = db_get_session_factory()
 
         # ── type-specific parameters ─────────────────────────────
         account_type = "profile"
@@ -558,8 +557,8 @@ class Scheduler:
 
         # Notify frontend
         try:
-            current_state = ConfigLoader(CONFIG_DIR).load_all()
-            publish_event(current_state.base.storage.redis_url, "task_created", {})
+            from packages.core.db.urls import redis_get_url
+            publish_event("task_created", {})
         except Exception:
             pass
 

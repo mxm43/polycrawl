@@ -4,14 +4,14 @@ import asyncio
 import json
 from typing import Any
 
-import redis as sync_redis
+from packages.core.db.redis_client import redis_pubsub, redis_sync
 
 _REDIS_CHANNEL = "polycrawl:events"
 
 _ws_clients: set[asyncio.Queue[dict[str, Any]]] = set()
 
 
-def publish_event(redis_url: str, event_type: str, data: dict[str, Any] | None = None) -> None:
+def publish_event(event_type: str, data: dict[str, Any] | None = None) -> None:
     """Publish an event to the Redis ``polycrawl:events`` channel.
 
     Called from any process (Worker, API, Beat) to notify connected
@@ -19,18 +19,18 @@ def publish_event(redis_url: str, event_type: str, data: dict[str, Any] | None =
     """
     try:
         payload = json.dumps({"type": event_type, "data": data or {}}, ensure_ascii=False)
-        client = sync_redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2)
-        client.publish(_REDIS_CHANNEL, payload)
-        client.close()
+        with redis_sync(socket_connect_timeout=2) as r:
+            r.publish(_REDIS_CHANNEL, payload)
     except Exception:
         pass
 
 
-async def subscribe_to_events(redis_url: str) -> None:
+async def subscribe_to_events() -> None:
     """Background coroutine: subscribe to ``polycrawl:events`` on Redis and
     forward every message to all connected WebSocket queues."""
     loop = asyncio.get_running_loop()
-    pubsub = sync_redis.from_url(redis_url, decode_responses=True).pubsub(ignore_subscribe_messages=True)
+    client = redis_pubsub()
+    pubsub = client.pubsub(ignore_subscribe_messages=True)
     pubsub.subscribe(_REDIS_CHANNEL)
 
     try:

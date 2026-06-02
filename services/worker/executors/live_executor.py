@@ -13,7 +13,8 @@ from sqlalchemy import select
 from packages.core.providers.registry import ProviderRegistry
 from packages.core.db.models import Account, Creator, LiveSession, LiveStatus, Task
 from packages.core.utils import build_creator_dir, now_utc_naive
-from services.worker.runtime import get_media_root, get_worker_session_factory, _get_redis_url
+from packages.core.db.urls import redis_get_url
+from services.worker.runtime import get_media_root
 
 
 _LOG = logging.getLogger(__name__)
@@ -33,8 +34,8 @@ def _update_last_live(account_id: int) -> None:
     """Record this account's last live timestamp in Redis for adaptive scheduling."""
     try:
         from redis import Redis
-        r = Redis.from_url(_get_redis_url(), decode_responses=True)
-        r.set(f"polycrawl:live:last_live:{account_id}", str(int(datetime.now(UTC).timestamp())))
+        with redis_sync() as r:
+            r.set(f"polycrawl:live:last_live:{account_id}", str(int(datetime.now(UTC).timestamp())))
         r.close()
     except Exception:
         pass
@@ -54,7 +55,7 @@ class LiveRecordResult:
 
 
 async def execute_live_monitor(task_id: str, account_id: int) -> LiveMonitorResult:
-    session_factory = get_worker_session_factory()
+    session_factory = db_get_session_factory()
 
     async with session_factory() as session:
         task = await session.get(Task, task_id)
@@ -95,7 +96,7 @@ async def execute_live_record(task_id: str, account_id: int) -> LiveRecordResult
     runs in a background asyncio task that updates Task/LiveSession on
     completion.
     """
-    session_factory = get_worker_session_factory()
+    session_factory = db_get_session_factory()
 
     async with session_factory() as session:
         task = await session.get(Task, task_id)
@@ -197,11 +198,10 @@ async def _background_record(
 ) -> None:
     """Download live stream in background, then update task & session."""
     import uuid
-    from packages.core.db import get_async_session_factory
-    from services.worker.runtime import _resolve_database_url
+    from packages.core.db.session import db_get_session_factory
     from services.worker.runtime import mark_task_success, mark_task_failed
     from services.worker.scheduler import notify_live_done
-    session_factory = get_async_session_factory(_resolve_database_url())
+    session_factory = db_get_session_factory()
     ls_uuid = uuid.UUID(session_id)
 
     _LOG.info("[bg] start account=%d session=%s path=%s", account_id, session_id, output_file_path)
@@ -210,7 +210,7 @@ async def _background_record(
     # ── stop-signal monitor ─────────────────────────────────────
     # The API sets polycrawl:live:stop:{account_id} when a user cancels.
     stop_event = asyncio.Event()
-    _redis_url = _get_redis_url()
+    _redis_url = redis_get_url()
     stop_monitor = asyncio.create_task(_poll_stop_signal(account_id, _redis_url, stop_event))
 
     try:
@@ -291,7 +291,7 @@ async def _background_record(
     # Fire queue-drain event for next dispatch
     try:
         from redis.asyncio import Redis
-        r = Redis.from_url(_get_redis_url(), decode_responses=True)
+        r = Redis.from_url(redis_get_url(), decode_responses=True)
         # Find which queue this task belongs to and check if it's empty
         # (simplified: just publish and let scheduler's guard handle it)
         await r.publish("polycrawl:live:dispatch", "1")
@@ -455,7 +455,7 @@ async def _poll_stop_signal(account_id: int, redis_url: str, stop_event: asyncio
 
 
 async def mark_live_error(account_id: int, error_message: str) -> None:
-    session_factory = get_worker_session_factory()
+    session_factory = db_get_session_factory()
     async with session_factory() as session:
         await _upsert_live_status(session, account_id, status="error", error_message=error_message)
         await session.commit()

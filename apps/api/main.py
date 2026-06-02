@@ -17,6 +17,9 @@ from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocket
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from packages.core.db import db_check_health, db_get_session_factory
+from packages.core.db.redis_client import redis_sync
+
 from apps.api.schemas import (
     AccountResponse,
     AccountScheduledRequest,
@@ -49,8 +52,8 @@ from packages.core.config.models import (
     SchedulesConfig,
 )
 from packages.core.config.watcher import watch_config_dir
-from packages.core.db import get_async_session_factory
-from packages.core.db.health import check_database
+from packages.core.db import db_get_session_factory
+from packages.core.db import db_check_health
 from packages.core.events import publish_event, subscribe_to_events, subscribe_ws_events, unsubscribe_ws_events
 from packages.core.db.models import Account, Artifact, Creator, LiveStatus, Task, TaskRun
 from packages.core.logging import read_log_file, setup_logging, subscribe_to_logs, subscribe_ws, unsubscribe_ws
@@ -80,8 +83,7 @@ def _push_to_task_queue(task_type: str, task_id: str, account_id: int, params: d
     Returns the queue key name, or None if no matching queue found.
     """
     state = loader.load_all()
-    r = Redis.from_url(state.base.storage.redis_url, decode_responses=True)
-    try:
+    with redis_sync() as r:
         for idx, entry in enumerate(state.base.schedules):
             if not entry.enabled:
                 continue
@@ -96,8 +98,6 @@ def _push_to_task_queue(task_type: str, task_id: str, account_id: int, params: d
                 r.rpush(queue_key, msg)
                 return queue_key
         return None
-    finally:
-        r.close()
 
 
 async def _reload_config() -> None:
@@ -105,7 +105,7 @@ async def _reload_config() -> None:
     global session_factory
     try:
         state = loader.load_all()
-        redis_url = state.base.storage.redis_url if state.base.storage else None
+        redis_url = redis_get_url()
         if session_factory is not None:
             await sync_creators_to_db(session_factory, state.creators)
         if redis_url:
@@ -118,7 +118,7 @@ async def _reload_config() -> None:
 async def startup_load_config() -> None:
     global session_factory, _config_observer
     state = loader.load_all()
-    session_factory = get_async_session_factory(state.base.storage.database_url)
+    session_factory = db_get_session_factory()
     await sync_creators_to_db(session_factory, state.creators)
 
     # File-system watcher (no polling)
@@ -128,11 +128,10 @@ async def startup_load_config() -> None:
     # Initialize logging system with Redis Pub/Sub
     log_dir = CONFIG_DIR.parent / state.base.global_config.get("data_dir", "data") / "logs"
     log_level = state.base.global_config.get("log_level", "INFO")
-    redis_url = state.base.storage.redis_url
-    setup_logging(redis_url=redis_url, log_dir=log_dir, log_level=log_level)
+    setup_logging(log_dir=log_dir, log_level=log_level)
     # Start background Redis 鈫?WebSocket subscribers
-    asyncio.create_task(subscribe_to_logs(redis_url))
-    asyncio.create_task(subscribe_to_events(redis_url))
+    asyncio.create_task(subscribe_to_logs())
+    asyncio.create_task(subscribe_to_events())
     logger.info("API started 鈥?config watcher + scheduler active")
 
 
@@ -189,7 +188,7 @@ def _signal_stop_live_record(account_id: int) -> None:
     """
     try:
         from redis import Redis
-        r = Redis.from_url(loader.load_all().base.storage.redis_url, decode_responses=True)
+        r = Redis.from_url(redis_get_url(), decode_responses=True)
         r.setex(f"polycrawl:live:stop:{account_id}", 60, "1")
         r.close()
     except Exception:
@@ -210,7 +209,7 @@ async def health() -> HealthResponse:
     except Exception:
         return HealthResponse(status="degraded", config="error", database="unknown")
 
-    db_ok = await check_database(state.base.storage.database_url)
+    db_ok = await db_check_health()
     if db_ok:
         return HealthResponse(status="ok", config="ok", database="ok")
     return HealthResponse(status="degraded", config="ok", database="error")
@@ -412,7 +411,7 @@ async def create_task(
         await session.commit()
         await session.refresh(task)
 
-        publish_event(ConfigLoader(CONFIG_DIR).load_all().base.storage.redis_url, "task_created", {"task_id": str(task.id)})
+        publish_event("task_created", {"task_id": str(task.id)})
 
         if queue_key is None:
             logger.warning("No matching schedule entry for task_type=%s, task queued but not dispatched", req.task_type)

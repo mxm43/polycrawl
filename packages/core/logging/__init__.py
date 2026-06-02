@@ -8,8 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import redis as sync_redis
-
+from packages.core.db.redis_client import redis_pubsub, redis_sync
 
 _LOG_ENTRY_FMT = "%(asctime)s.%(msecs)03d [%(levelname)-7s] %(name)s: %(message)s"
 _DATE_FMT = "%Y-%m-%d %H:%M:%S"
@@ -51,16 +50,14 @@ class _RedisPubHandler(logging.Handler):
     Creates a fresh Redis connection per emit() to stay fork-safe.
     """
 
-    def __init__(self, redis_url: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._redis_url = redis_url
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             entry = _format_entry(record)
-            client = sync_redis.from_url(self._redis_url, decode_responses=True, socket_connect_timeout=2)
-            client.publish(_REDIS_CHANNEL, json.dumps(entry, ensure_ascii=False))
-            client.close()
+            with redis_sync(socket_connect_timeout=2) as r:
+                r.publish(_REDIS_CHANNEL, json.dumps(entry, ensure_ascii=False))
         except Exception:
             self.handleError(record)
 
@@ -72,11 +69,12 @@ class _RedisPubHandler(logging.Handler):
 _ws_clients: set[asyncio.Queue[dict[str, Any]]] = set()
 
 
-async def subscribe_to_logs(redis_url: str) -> None:
+async def subscribe_to_logs() -> None:
     """Background coroutine: subscribe to ``polycrawl:logs`` on Redis and forward
     every entry to all connected WebSocket queues."""
     loop = asyncio.get_running_loop()
-    pubsub = sync_redis.from_url(redis_url, decode_responses=True).pubsub(ignore_subscribe_messages=True)
+    client = redis_pubsub()
+    pubsub = client.pubsub(ignore_subscribe_messages=True)
     pubsub.subscribe(_REDIS_CHANNEL)
 
     try:
@@ -184,7 +182,6 @@ def read_log_file(
 # ---------------------------------------------------------------------------
 
 def setup_logging(
-    redis_url: str = "",
     log_dir: str | Path = _LOG_DIR,
     log_level: str = "INFO",
     root_logger: logging.Logger | None = None,
@@ -220,10 +217,9 @@ def setup_logging(
         root.addHandler(ch)
 
     # ---- Redis Pub/Sub handler ----
-    if redis_url:
-        rh = _RedisPubHandler(redis_url)
-        rh.setLevel(logging.INFO)  # only INFO+ to Redis (avoid flooding)
-        root.addHandler(rh)
+    rh = _RedisPubHandler()
+    rh.setLevel(logging.INFO)  # only INFO+ to Redis (avoid flooding)
+    root.addHandler(rh)
 
     # Silence noisy third-party loggers
     logging.getLogger("httpx").setLevel(logging.WARNING)

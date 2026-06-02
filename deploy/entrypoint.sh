@@ -1,7 +1,7 @@
 #!/bin/sh
 # ── PolyCrawl Docker entrypoint ─────────────────────────────────
-# Reads Docker Secrets (if available) and constructs connection
-# URLs, then executes the container's main command.
+# Reads Docker Secrets (if available) and exports POLYCRAWL_*
+# environment variables, then executes the container's main command.
 #
 # Usage in docker-compose.yml:
 #   entrypoint: ["/entrypoint.sh"]

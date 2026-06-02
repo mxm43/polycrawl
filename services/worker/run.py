@@ -18,7 +18,7 @@ from services.worker.consumer import Consumer
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "config"
 _state = ConfigLoader(CONFIG_DIR).load_all()
-_redis_url = _state.base.storage.redis_url
+_redis_url = redis_get_url()
 _data_dir = _state.base.global_config.get("data_dir", "data")
 _log_dir = CONFIG_DIR.parent / _data_dir / "logs"
 _log_level = _state.base.global_config.get("log_level", "INFO")
@@ -36,10 +36,10 @@ async def _startup_recovery() -> None:
     """
     from redis.asyncio import Redis
     from sqlalchemy import text
-    from services.worker.runtime import get_worker_session_factory
+    from packages.core.db import db_get_session_factory
 
     # ── DB: fail stale tasks ────────────────────────────────────
-    session_factory = get_worker_session_factory()
+    session_factory = db_get_session_factory()
     async with session_factory() as session:
         result = await session.execute(
             text(

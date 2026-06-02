@@ -8,17 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from packages.core.config import ConfigLoader
-from packages.core.db import get_async_session_factory
+from packages.core.db import db_get_session_factory
 from packages.core.db.models import Task, TaskRun
+from packages.core.db.urls import db_get_url
 from packages.core.events import publish_event
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "config"
-
-
-def _resolve_database_url() -> str:
-    state = ConfigLoader(CONFIG_DIR).load_all()
-    return state.base.storage.database_url
 
 
 def get_media_root() -> Path:
@@ -30,16 +26,8 @@ def get_media_root() -> Path:
     return p
 
 
-def get_worker_session_factory() -> async_sessionmaker[AsyncSession]:
-    return get_async_session_factory(_resolve_database_url())
-
-
-def _get_redis_url() -> str:
-    return ConfigLoader(CONFIG_DIR).load_all().base.storage.redis_url
-
-
 async def mark_task_running(task_id: str) -> None:
-    session_factory = get_worker_session_factory()
+    session_factory = db_get_session_factory()
     async with session_factory() as session:
         task = await session.get(Task, task_id)
         if task is None:
@@ -54,7 +42,7 @@ async def mark_task_running(task_id: str) -> None:
             run.started_at = datetime.utcnow()
 
         await session.commit()
-        publish_event(_get_redis_url(), "task_updated", {"task_id": task_id, "status": "running"})
+        publish_event("task_updated", {"task_id": task_id, "status": "running"})
 
 
 async def mark_task_success(task_id: str) -> None:
@@ -69,7 +57,7 @@ async def mark_task_success_with_metrics(
     items_skipped: int | None = None,
     bytes_downloaded: int | None = None,
 ) -> None:
-    session_factory = get_worker_session_factory()
+    session_factory = db_get_session_factory()
     async with session_factory() as session:
         task = await session.get(Task, task_id)
         if task is None:
@@ -95,11 +83,11 @@ async def mark_task_success_with_metrics(
                 run.bytes_downloaded = bytes_downloaded
 
         await session.commit()
-        publish_event(_get_redis_url(), "task_updated", {"task_id": task_id, "status": "success"})
+        publish_event("task_updated", {"task_id": task_id, "status": "success"})
 
 
 async def mark_task_failed(task_id: str, error_message: str) -> None:
-    session_factory = get_worker_session_factory()
+    session_factory = db_get_session_factory()
     async with session_factory() as session:
         task = await session.get(Task, task_id)
         if task is None:
@@ -119,7 +107,7 @@ async def mark_task_failed(task_id: str, error_message: str) -> None:
                 run.duration_seconds = Decimal(str((now - run.started_at).total_seconds()))
 
         await session.commit()
-        publish_event(_get_redis_url(), "task_updated", {"task_id": task_id, "status": "failed"})
+        publish_event("task_updated", {"task_id": task_id, "status": "failed"})
 
 
 async def _latest_task_run(session: AsyncSession, task_id: object) -> TaskRun | None:

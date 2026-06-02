@@ -25,20 +25,15 @@ _SAVED_AT_PREFIX = "polycrawl:cookies:saved_at:"
 _DEFAULT_TTL = 604800  # 7 days
 
 
-def _redis_from_config() -> Redis:
-    """Create a Redis connection from the project config."""
-    from packages.core.config import ConfigLoader
-    from pathlib import Path
-    cfg = ConfigLoader(Path(__file__).resolve().parents[3] / "config").load_all()
-    return Redis.from_url(cfg.base.storage.redis_url, decode_responses=True)
-
-
 def get_verify_state(platform: str) -> dict[str, Any]:
     """Return ``{verified_ok, verified_at}`` for a platform, or empty dict."""
+    from packages.core.db import redis_sync
+    url = redis_get_url()
+    if not url:
+        return {}
     try:
-        r = _redis_from_config()
-        raw = r.get(_KEY_PREFIX + platform)
-        r.close()
+        with redis_sync() as r:
+            raw = r.get(_KEY_PREFIX + platform)
         if raw:
             return json.loads(raw)
     except Exception:
@@ -48,11 +43,13 @@ def get_verify_state(platform: str) -> dict[str, Any]:
 
 def set_verified(platform: str, ok: bool) -> None:
     """Store ``verified_ok`` and ``verified_at`` in Redis with a TTL."""
+    from packages.core.db import redis_sync
+    url = redis_get_url()
+    if not url:
+        return
     try:
-        r = _redis_from_config()
-        data = {"verified_ok": ok, "verified_at": int(time.time())}
-        r.setex(_KEY_PREFIX + platform, _DEFAULT_TTL, json.dumps(data))
-        r.close()
+        with redis_sync() as r:
+            r.setex(_KEY_PREFIX + platform, _DEFAULT_TTL, json.dumps(data))
     except Exception:
         pass
 
@@ -64,30 +61,39 @@ def invalidate(platform: str) -> None:
 
 def clear(platform: str) -> None:
     """Remove verify state for a platform."""
+    from packages.core.db import redis_sync
+    url = redis_get_url()
+    if not url:
+        return
     try:
-        r = _redis_from_config()
-        r.delete(_KEY_PREFIX + platform)
-        r.close()
+        with redis_sync() as r:
+            r.delete(_KEY_PREFIX + platform)
     except Exception:
         pass
 
 
 def set_saved_at(platform: str) -> None:
     """Record when cookies were last saved for a platform (Redis, not config file)."""
+    from packages.core.db.urls import redis_get_url
+    url = redis_get_url()
+    if not url:
+        return
     try:
-        r = _redis_from_config()
-        r.set(_SAVED_AT_PREFIX + platform, str(int(time.time())))
-        r.close()
+        with redis_sync() as r:
+            r.set(_SAVED_AT_PREFIX + platform, str(int(time.time())))
     except Exception:
         pass
 
 
 def get_saved_at(platform: str) -> int | None:
     """Return Unix timestamp of last cookie save, or None."""
+    from packages.core.db.urls import redis_get_url
+    url = redis_get_url()
+    if not url:
+        return None
     try:
-        r = _redis_from_config()
-        raw = r.get(_SAVED_AT_PREFIX + platform)
-        r.close()
+        with redis_sync() as r:
+            raw = r.get(_SAVED_AT_PREFIX + platform)
         if raw:
             return int(raw)
     except Exception:

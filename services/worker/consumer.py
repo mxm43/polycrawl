@@ -32,7 +32,7 @@ from services.worker.executors import (
 )
 from services.worker.executors.content_executor import _record_adaptive_state
 from services.worker.runtime import (
-    get_worker_session_factory,
+    db_get_session_factory,
     mark_task_failed,
     mark_task_running,
     mark_task_success,
@@ -64,8 +64,8 @@ class Consumer:
         self._redis: Redis | None = None
 
     async def start(self) -> None:
-        state = ConfigLoader(CONFIG_DIR).load_all()
-        self._redis = Redis.from_url(state.base.storage.redis_url, decode_responses=True)
+        from packages.core.db.urls import redis_get_url
+        self._redis = Redis.from_url(redis_get_url(), decode_responses=True)
         for idx, entry in enumerate(state.base.schedules):
             if not entry.enabled:
                 continue

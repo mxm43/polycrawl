@@ -134,9 +134,25 @@ class CreatorsFile(BaseModel):
 
 
 class BaseStorageConfig(BaseModel):
-    database_url: str
-    redis_url: str
     media_base_path: str
+
+
+class BaseConfig(BaseModel):
+    config_version: int = 1
+    storage: BaseStorageConfig
+    global_config: dict[str, Any] = Field(default_factory=dict, alias="global")
+    schedules: list[ScheduleEntry] = Field(default_factory=list, alias="tasks")
+    strategy: StrategyConfig = Field(alias="strategy")
+    download: DownloadConfig
+
+    model_config = {
+        "populate_by_name": True,
+    }
+
+
+class ConfigState(BaseModel):
+    base: BaseConfig
+    creators: CreatorsFile
 
 
 class BaseConfig(BaseModel):

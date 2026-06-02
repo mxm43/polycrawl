@@ -1,14 +1,8 @@
 # ── Secrets ─────────────────────────────────────────────────────
-# Docker Secrets 优先于 .env 文件，适合对安全性要求更高的部署。
+# Docker Secrets 是目前的安全方案。密码不会暴露为环境变量，
+# 即使 docker inspect 也无法看到。
 #
-# 使用方式（二选一）：
-#
-# 方案 A — 仅用 .env（简单）：
-#   1. cp .env.example .env
-#   2. 编辑 .env 中的密码
-#   3. docker compose up -d
-#
-# 方案 B — Docker Secrets（更安全）：
+# 首次部署：
 #   1. echo -n 'your_strong_password' > secrets/postgres_password.txt
 #   2. echo -n 'your_strong_password' > secrets/redis_password.txt
 #   3. docker compose up -d
@@ -58,7 +52,7 @@ services:
       - redis-data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$(cat /run/secrets/redis_password)\" ping"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -74,10 +68,6 @@ services:
       - redis_password
     environment:
       - TZ=${TZ:-Asia/Shanghai}
-      # 以下两行在不使用 Docker Secrets 时作为默认值
-      # 使用 Secrets 时会被 entrypoint.sh 读取密码后覆盖
-      - POLYCRAWL_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-polycrawl}:${POSTGRES_PASSWORD:-CHANGE_ME_NOW}@postgres:5432/${POSTGRES_DB:-polycrawl_db}
-      - POLYCRAWL_REDIS_URL=redis://:${REDIS_PASSWORD:-CHANGE_ME_NOW}@redis:6379/0
     command: >
       sh -c "python -m alembic upgrade head && uvicorn apps.api.main:app --host 0.0.0.0 --port 8000"
     ports:
@@ -107,10 +97,6 @@ services:
       - redis_password
     environment:
       - TZ=${TZ:-Asia/Shanghai}
-      # 以下两行在不使用 Docker Secrets 时作为默认值
-      # 使用 Secrets 时会被 entrypoint.sh 读取密码后覆盖
-      - POLYCRAWL_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-polycrawl}:${POSTGRES_PASSWORD:-CHANGE_ME_NOW}@postgres:5432/${POSTGRES_DB:-polycrawl_db}
-      - POLYCRAWL_REDIS_URL=redis://:${REDIS_PASSWORD:-CHANGE_ME_NOW}@redis:6379/0
     command: ["python", "-m", "services.worker.run"]
     volumes:
       - media-data:/app/downloads

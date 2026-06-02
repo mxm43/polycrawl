@@ -95,7 +95,7 @@ async def _read_state(database_url: str, task_id: uuid.UUID) -> tuple[Task, Task
 def test_content_pipeline_integration_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     assert DB_URL is not None
 
-    monkeypatch.setattr(worker_runtime, "_resolve_database_url", lambda: DB_URL)
+    monkeypatch.setattr(worker_runtime, "db_get_url", lambda: DB_URL)
 
     asyncio.run(_reset_db(DB_URL))
     task_id, account_id = asyncio.run(_seed_task(DB_URL))

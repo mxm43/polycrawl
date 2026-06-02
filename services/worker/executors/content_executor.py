@@ -16,7 +16,9 @@ from packages.core.providers.registry import ProviderRegistry
 from packages.core.db.models import Account, Artifact, Creator, Task
 from packages.core.events import publish_event
 from packages.core.utils import build_creator_dir, parse_publish_date
-from services.worker.runtime import get_media_root, get_worker_session_factory, _get_redis_url
+from packages.core.db import db_get_session_factory
+from packages.core.db.urls import redis_get_url
+from services.worker.runtime import get_media_root
 
 # Per-platform download rate limiting (keyed by platform name).
 _download_last_ts: dict[str, float] = {}
@@ -38,10 +40,9 @@ async def _download_rate_limit(platform: str, rps: float) -> None:
 def _record_adaptive_state(account_id: int, downloaded: int) -> None:
     """Update Redis adaptive idle/active tracking after a fetch run."""
     try:
-        from packages.core.config import ConfigLoader
-        cfg = ConfigLoader(Path(__file__).resolve().parents[3] / "config").load_all()
+        from packages.core.db.urls import redis_get_url
         from redis import Redis
-        r = Redis.from_url(cfg.base.storage.redis_url, decode_responses=True)
+        r = Redis.from_url(redis_get_url(), decode_responses=True)
 
         now_ts = int(datetime.now(UTC).timestamp())
         active_key = f"polycrawl:adaptive:active:{account_id}"
@@ -187,7 +188,7 @@ def _download_file_requests_http(
 
 
 async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecutionResult:
-    session_factory = get_worker_session_factory()
+    session_factory = db_get_session_factory()
     media_root = get_media_root()
 
     # Resolve download rate: site config > base config
@@ -419,7 +420,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
         if not provider.has_more:
             cursor_val = 0
         from redis import Redis as _SyncRedis
-        _r = _SyncRedis.from_url(_get_redis_url(), decode_responses=True)
+        _r = _SyncRedis.from_url(redis_get_url(), decode_responses=True)
         _r.set(f"polycrawl:incremental:cursor:{account_id}", str(cursor_val))
         _r.close()
     except Exception:
@@ -427,8 +428,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
 
     # ── notify frontend ────────────────────────────────────────
     try:
-        redis_url = ConfigLoader(Path(__file__).resolve().parents[3] / "config").load_all().base.storage.redis_url
-        publish_event(redis_url, "creators_updated", {"account_id": account_id})
+        publish_event("creators_updated", {"account_id": account_id})
     except Exception:
         pass
 

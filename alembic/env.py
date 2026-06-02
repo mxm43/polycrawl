@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from packages.core.config import ConfigLoader
 from packages.core.db.base import Base
 from packages.core.db import models  # noqa: F401
 
@@ -16,13 +14,9 @@ CONFIG_DIR = ROOT / "config"
 
 
 def _resolve_db_url() -> str:
-    # Allow env var override for migration tooling (e.g. postgres -> localhost)
-    env_url = os.environ.get("POLYCRAWL_DATABASE_URL")
-    if env_url:
-        configured = env_url
-    else:
-        configured = ConfigLoader(CONFIG_DIR).load_all().base.storage.database_url
-    return configured.replace("+asyncpg", "+psycopg")
+    from packages.core.db.urls import db_get_url
+    url = db_get_url()
+    return url.replace("+asyncpg", "+psycopg") if url else ""
 
 
 def run_migrations_offline() -> None:
