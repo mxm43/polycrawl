@@ -19,7 +19,7 @@ dependencies = [
   "redis>=5.0.0",
   "watchdog>=4.0.0",
   "httpx>=0.27.0",
-  "requests>=2.32.0",
+  "execjs>=1.4.0",
   "pycryptodome>=3.20.0"
 ]
 

@@ -10,6 +10,7 @@ FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -18,12 +19,7 @@ WORKDIR /app
 COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
-# Copy project code
-COPY . .
-
-# ── Docker Secrets entrypoint ──────────────────────────────────
-COPY deploy/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# 容器启动时 /app 会被宿主机项目目录挂载覆盖，代码不内嵌到镜像中
 
 # ── ports ──────────────────────────────────────────────────────
 EXPOSE 8000

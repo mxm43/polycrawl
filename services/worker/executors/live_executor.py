@@ -6,7 +6,6 @@ import logging
 import time
 
 import httpx
-import requests
 
 from sqlalchemy import select
 
@@ -409,15 +408,16 @@ def _download_live_stream_requests(
     bytes_written = 0
     start = time.monotonic()
     try:
-        with requests.get(
-            stream_url,
-            headers=headers,
-            cookies=cookies,
-            stream=True,
-            timeout=30,
-            allow_redirects=True,
-        ) as resp:
-            resp.raise_for_status()
+        with httpx.Client() as client:
+            with client.stream(
+                "GET",
+                stream_url,
+                headers=headers,
+                cookies=cookies,
+                timeout=30,
+                follow_redirects=True,
+            ) as resp:
+                resp.raise_for_status()
             with dest.open("wb") as fh:
                 for chunk in resp.iter_content(chunk_size=65536):
                     if not chunk:

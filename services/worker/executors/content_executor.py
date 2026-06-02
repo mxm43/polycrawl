@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
-import requests
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from sqlalchemy import and_, select
@@ -164,20 +163,21 @@ def _download_file_requests_http(
     tmp = dest.with_suffix(dest.suffix + ".tmp")
     bytes_written = 0
     try:
-        with requests.get(
-            download_url,
-            headers=headers,
-            cookies=cookies,
-            stream=True,
-            timeout=timeout,
-            allow_redirects=True,
-        ) as resp:
-            resp.raise_for_status()
-            with tmp.open("wb") as fh:
-                for chunk in resp.iter_content(chunk_size=65536):
-                    if not chunk:
-                        continue
-                    fh.write(chunk)
+        with httpx.Client() as client:
+            with client.stream(
+                "GET",
+                download_url,
+                headers=headers,
+                cookies=cookies,
+                timeout=timeout,
+                follow_redirects=True,
+            ) as resp:
+                resp.raise_for_status()
+                with tmp.open("wb") as fh:
+                    for chunk in resp.iter_bytes(chunk_size=65536):
+                        if not chunk:
+                            continue
+                        fh.write(chunk)
                     bytes_written += len(chunk)
         tmp.replace(dest)
     except Exception:

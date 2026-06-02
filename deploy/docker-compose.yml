@@ -1,40 +1,19 @@
-# ── Secrets ─────────────────────────────────────────────────────
-# Docker Secrets 是目前的安全方案。密码不会暴露为环境变量，
-# 即使 docker inspect 也无法看到。
-#
-# 首次部署：
-#   1. echo -n 'your_strong_password' > secrets/postgres_password.txt
-#   2. echo -n 'your_strong_password' > secrets/redis_password.txt
-#   3. docker compose up -d
-#   4. (可选) rm secrets/*.txt   ← 启动后即可删除原文
-#
-# secrets/ 目录默认包含在 .gitignore 中，不会误提交。
-# ────────────────────────────────────────────────────────────────
-
-secrets:
-  postgres_password:
-    file: ./secrets/postgres_password.txt
-  redis_password:
-    file: ./secrets/redis_password.txt
-
 services:
   postgres:
     image: postgres:16-alpine
     container_name: polycrawl-postgres
-    secrets:
-      - postgres_password
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-polycrawl}
-      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
-      - POSTGRES_DB=${POSTGRES_DB:-polycrawl_db}
-      - TZ=${TZ:-Asia/Shanghai}
-    # ports:                # P2: 移除宿主机端口暴露 — 容器间内部通信无需映射
-    #   - "${POSTGRES_PORT:-5432}:5432"   # 如需从宿主机直连调试，取消注释
+      - POSTGRES_USER=polycrawl
+      - POSTGRES_PASSWORD=CHANGE_ME
+      - POSTGRES_DB=polycrawl_db
+      - TZ=Asia/Shanghai
+    # ports:                # 容器间内部通信无需暴露到宿主机
+    #   - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-polycrawl} -d ${POSTGRES_DB:-polycrawl_db}"]
+      test: ["CMD-SHELL", "pg_isready -U polycrawl -d polycrawl_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,17 +21,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: polycrawl-redis
-    secrets:
-      - redis_password
-    command: >
-      sh -c 'redis-server --requirepass "$$(cat /run/secrets/redis_password)"'
-    # ports:                # P2: 移除宿主机端口暴露
-    #   - "${REDIS_PORT:-6379}:6379"
+    command: redis-server --requirepass CHANGE_ME
+    # ports:
+    #   - "6379:6379"
     volumes:
       - redis-data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$$(cat /run/secrets/redis_password)\" ping"]
+      test: ["CMD-SHELL", "redis-cli -a CHANGE_ME ping"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -62,23 +38,17 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: polycrawl-api
-    entrypoint: ["/entrypoint.sh"]
-    secrets:
-      - postgres_password
-      - redis_password
     environment:
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=Asia/Shanghai
+      - POLYCRAWL_DATABASE_URL=postgresql+asyncpg://polycrawl:CHANGE_ME@postgres:5432/polycrawl_db
+      - POLYCRAWL_REDIS_URL=redis://:CHANGE_ME@redis:6379/0
     command: >
       sh -c "python -m alembic upgrade head && uvicorn apps.api.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
-      # 媒体文件持久化（可选：挂载 NAS 共享文件夹）
-      - media-data:/app/downloads
-      # 配置文件热加载（源码挂载，便于外部编辑）
-      - ../config:/app/config:ro
-      # 日志持久化
-      - log-data:/app/data/logs
+      - ..:/app:cached          # 挂载整个项目目录，宿主机可直接访问脚本
+      - log-data:/app/data/logs  # 日志持久化
     restart: unless-stopped
     depends_on:
       postgres:
@@ -91,16 +61,14 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: polycrawl-worker
-    entrypoint: ["/entrypoint.sh"]
-    secrets:
-      - postgres_password
-      - redis_password
     environment:
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=Asia/Shanghai
+      - POLYCRAWL_DATABASE_URL=postgresql+asyncpg://polycrawl:CHANGE_ME@postgres:5432/polycrawl_db
+      - POLYCRAWL_REDIS_URL=redis://:CHANGE_ME@redis:6379/0
     command: ["python", "-m", "services.worker.run"]
     volumes:
-      - media-data:/app/downloads
-      - ../config:/app/config:ro
+      - ..:/app:cached
+      - media-data:/app/downloads   # 下载文件持久化（覆盖 /app/downloads）
       - log-data:/app/data/logs
     restart: unless-stopped
     depends_on:
