@@ -1,0 +1,33 @@
+{
+  "platform": {
+    "cookies": {
+      "a1": "",
+      "acw_tc": "",
+      "webId": "",
+      "web_session": "",
+      "gid": "",
+      "id_token": "",
+      "xsecappid": "",
+      "websectiga": "",
+      "abRequestId": "",
+      "ets": "",
+      "loadts": "",
+      "sec_poison_id": "",
+      "unread": "",
+      "webBuild": "",
+      "x-rednote-datactry": "CN",
+      "x-rednote-holderctry": "CN"
+    },
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+      "Referer": "https://www.xiaohongshu.com/"
+    }
+  },
+  "content_fetch": {
+    "look_ahead_pages": 1
+  },
+  "request": {
+    "tick": "2s",
+    "jitter": ["1s", "2s"]
+  }
+}

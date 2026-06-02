@@ -1,0 +1,18 @@
+{
+  "creators": [
+    {
+      "creator_key": "creator_example",
+      "display_name": "示例创作者",
+      "tags": ["follow"],
+      "accounts": [
+        {
+          "platform": "douyin",
+          "type": "profile",
+          "account_url": [
+            {"url": "https://www.douyin.com/user/EXAMPLE_USER_ID", "enabled": true}
+          ]
+        }
+      ]
+    }
+  ]
+}

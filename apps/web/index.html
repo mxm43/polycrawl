@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spider 管理台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260526-reorder-1" />
+  </head>
+  <body>
+    <main class="layout">
+      <header class="hero">
+        <div>
+          <p class="kicker">PolyCrawl</p>
+          <h1 id="title-main">管理控制台</h1>
+          <p id="subtitle-main" class="subtitle">统一查看系统状态、创建任务并跟踪执行结果。</p>
+        </div>
+        <div class="hero-actions">
+          <label class="lang-label" for="lang-select" id="label-lang">语言</label>
+          <select id="lang-select" class="lang-select" aria-label="language">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </header>
+
+      <nav class="tabs" id="tabs">
+        <button class="tab is-active" data-tab="overview" id="tab-overview">概览</button>
+        <button class="tab" data-tab="login" id="tab-login">登录管理</button>
+        <button class="tab" data-tab="creators" id="tab-creators">创作者</button>
+        <button class="tab" data-tab="tasks" id="tab-tasks">任务</button>
+        <button class="tab" data-tab="schedules" id="tab-schedules">调度</button>
+        <button class="tab" data-tab="live" id="tab-live">直播</button>
+        <button class="tab" data-tab="logs" id="tab-logs">日志</button>
+        <button class="tab" data-tab="docs" id="tab-docs">文档</button>
+      </nav>
+
+      <section class="panel is-active" data-panel="creators">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-creators">创作者列表</h2>
+          </div>
+          <div class="creator-toolbar">
+            <div class="filter-group">
+              <span id="label-creator-tag-filter" class="filter-label">标签过滤</span>
+              <div class="filter-row">
+                <div class="excel-filter" id="excel-filter">
+                  <button class="excel-filter-btn" id="excel-filter-btn" type="button">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 2h12l-4.5 5.5v4l-3 1.5v-5.5L1 2Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                    <span id="excel-filter-label">全部</span>
+                  </button>
+                  <div class="excel-filter-dropdown" id="excel-filter-dropdown">
+                    <div class="excel-filter-search">
+                      <input type="text" id="excel-filter-search" placeholder="搜索标签..." />
+                    </div>
+                    <div class="excel-filter-body" id="excel-filter-body"></div>
+                  </div>
+                </div>
+                <button class="btn btn-ghost btn-batch-toggle" id="btn-batch-toggle" type="button">多选</button>
+          <button class="btn btn-ghost btn-reorder-toggle" id="btn-reorder-toggle" type="button">调整顺序</button>
+              </div>
+            </div>
+            <label>
+              <span id="label-creator-sort">排序方式</span>
+              <select id="creator-sort">
+                <option value="default">默认排序</option>
+                <option value="updated_desc">最近更新优先</option>
+                <option value="works_desc">作品数优先</option>
+                <option value="size_desc">容量优先</option>
+                <option value="name_asc">名称 A-Z</option>
+              </select>
+            </label>
+          </div>
+          <div class="stats-grid" id="creator-stats"></div>
+          <div id="creators-cards" class="creator-list"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="overview">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-health">系统健康</h2>
+          </div>
+          <div id="health-grid" class="health-grid"></div>
+          <div id="cookie-status"></div>
+          <div id="recent-failures"></div>
+        </div>
+        <div class="stats-grid" id="overview-stats"></div>
+      </section>
+
+      <section class="panel" data-panel="tasks">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-create">创建任务</h2>
+          </div>
+          <form id="task-form" class="task-form">
+            <label>
+              <span id="label-account">账号</span>
+              <select id="account-id" required></select>
+            </label>
+            <label>
+              <span id="label-task-type">任务类型</span>
+              <select id="task-type" required>
+                <option value="content_fetch">content_fetch</option>
+                <option value="live_record">live_record</option>
+              </select>
+            </label>
+            <label>
+              <span id="label-max-retries">最大重试次数</span>
+              <input id="max-retries" type="number" min="0" value="3" />
+            </label>
+            <button class="btn btn-primary" type="submit" id="btn-submit-task">提交任务</button>
+          </form>
+          <p id="task-result" class="hint"></p>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-tasks">最近任务</h2>
+          </div>
+          <div class="stats-grid" id="task-stats"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th id="th-task-id">任务ID</th>
+                  <th id="th-account">账号</th>
+                  <th id="th-type">类型</th>
+                  <th id="th-status">状态</th>
+                  <th id="th-retry">重试</th>
+                  <th id="th-created">创建时间</th>
+                </tr>
+              </thead>
+              <tbody id="tasks-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="live">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-live">直播状态</h2>
+          </div>
+          <div class="stats-grid" id="live-stats"></div>
+          <div id="live-cards" class="cards-grid"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="schedules">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-schedules">定时调度</h2>
+          </div>
+          <p class="subtitle" id="schedules-tip">修改后立即写回配置文件，下次调度周期生效。</p>
+          <div id="schedules-form" class="schedules-form"></div>
+          <p id="schedules-result" class="hint"></p>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="logs">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-logs">系统日志</h2>
+            <div class="card-head-actions">
+              <button id="clear-logs" class="btn btn-ghost" type="button">清除</button>
+              <select id="log-level-filter" class="log-level-filter">
+                <option value="">全部级别</option>
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO" selected>INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+            </div>
+          </div>
+          <div class="logs-status" id="log-live-status">● 实时连接中</div>
+          <div id="log-entries" class="log-entries"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="login">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-login">登录管理</h2>
+          </div>
+          <div id="login-content"></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="docs">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="heading-docs">接口文档</h2>
+          </div>
+          <p class="subtitle" id="docs-note">
+            当前 OpenAPI 交互页由 Swagger UI 提供，组件文案以英文为主。你可以通过这里快速打开文档或原始 JSON。
+          </p>
+          <div class="quick-links docs-links">
+            <a class="btn btn-link" href="/docs" target="_blank" rel="noopener" id="link-swagger">打开 Swagger 文档</a>
+            <a class="btn btn-link" href="/redoc" target="_blank" rel="noopener" id="link-redoc">打开 ReDoc 文档</a>
+            <a class="btn btn-link" href="/openapi.json" target="_blank" rel="noopener" id="link-openapi">查看 OpenAPI JSON</a>
+          </div>
+          <p class="hint" id="docs-tip">语言下拉会作用于本管理台。若需要完全中文化 Swagger UI，可在下一步替换为自托管文档前端。</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="/assets/translations.js?v=1"></script>
+    <script src="/assets/utils.js?v=1"></script>
+    <!-- Tab modules (loaded before core.js which references their render functions) -->
+    <script src="/assets/creators.js?v=1"></script>
+    <script src="/assets/overview.js?v=1"></script>
+    <script src="/assets/tasks.js?v=1"></script>
+    <script src="/assets/live.js?v=1"></script>
+    <script src="/assets/schedules.js?v=1"></script>
+    <script src="/assets/logs.js?v=1"></script>
+    <script src="/assets/login.js?v=3"></script>
+    <!-- Core depends on all above -->
+    <script src="/assets/core.js?v=1"></script>
+  </body>
+</html>

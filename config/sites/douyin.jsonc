@@ -1,0 +1,24 @@
+{
+  "platform": {
+    "enabled": true,
+    "cookies": {
+    // TODO: 从浏览器登录后复制完整 Cookie
+    // 示例: "ttwid": "your_ttwid_value"
+    "__placeholder__": "replace_with_real_cookies"
+    }
+  },
+  "download": {
+    "download_requests_per_second": 1
+  },
+  "content_fetch": {
+    "max_count": 0,
+    "look_ahead_pages": 3
+  },
+  "request": {
+    "tick": "1s",
+    "jitter": ["0.5s", "1.5s"]
+  },
+  "mode": [
+    "post"
+  ]
+}

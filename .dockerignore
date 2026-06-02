@@ -1,0 +1,16 @@
+.venv
+.venv/**
+__pycache__
+*.pyc
+.git
+.gitignore
+.pytest_cache
+spider_platform.egg-info
+data/logs/*
+*.log
+*.ps1
+.DS_Store
+README.md
+docs/
+tmp/
+tools/

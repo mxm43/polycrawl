@@ -1,0 +1,32 @@
+{
+  "platform": {
+    "cookies": {
+      "_T_WM": "your_t_wm_value",
+      "gdxidpyhxdE": "",
+      "SCF": "",
+      "SUB": "",
+      "SUBP": "",
+      "SSOLoginState": "",
+      "ALF": "",
+      "WEIBOCN_FROM": "",
+      "MLOGIN": "",
+      "XSRF-TOKEN": "",
+      "M_WEIBOCN_PARAMS": "",
+      "mweibo_short_token": ""
+    },
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+      "Referer": "https://m.weibo.cn/",
+      "Accept": "application/json, text/plain, */*",
+      "Accept-Language": "zh-CN,zh;q=0.9",
+      "X-Requested-With": "XMLHttpRequest"
+    }
+  },
+  "content_fetch": {
+    "look_ahead_pages": 1
+  },
+  "request": {
+    "tick": "3s",
+    "jitter": ["1s", "3s"]
+  }
+}

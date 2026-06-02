@@ -1,0 +1,22 @@
+{
+  "platform": {
+    "enabled": true,
+    "cookies": {
+      "__example__": "replace_with_real_cookies"
+    },
+    "headers": {
+      "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+      "Referer": "https://x.com/",
+      "Origin": "https://x.com"
+    },
+    "bearer_token": "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
+  },
+  "content_fetch": {
+    "look_ahead_pages": 3
+  },
+  "request": {
+    "tick": "3s",
+    "jitter": ["1s", "3s"]
+  }
+}

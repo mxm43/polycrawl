@@ -1,0 +1,122 @@
+{
+  "config_version": 1,
+  "global": {
+    "debug": true,
+    "log_level": "INFO",
+    "data_dir": "./data"
+  },
+  "storage": {
+    "database_url": "postgresql+asyncpg://polycrawl:CHANGE_ME@127.0.0.1:5432/polycrawl_db",
+    "redis_url": "redis://:CHANGE_ME@127.0.0.1:6379/0",
+    "media_base_path": "./downloads"
+  },
+
+  // ============================================================
+  // 策略配置（strategy）
+  // 每个策略独立配置 tick（API 间隔）和 adaptive（自适应阶梯）。
+  // task 中可通过同名字段覆盖本节的配置。
+  // ============================================================
+  "strategy": {
+    // 日常增量扫描
+    "incremental": {
+      "adaptive": {
+        "enabled": true,
+        "tiers": [
+          // 闲置 ≥14 天 → 降为 1 天 1 次
+          { "after": "14d", "interval": "1d" },
+          // 闲置 ≥30 天 → 3 天 1 次
+          { "after": "30d", "interval": "3d" },
+          // 闲置 ≥60 天 → 7 天 1 次
+          { "after": "60d", "interval": "7d" },
+          // 闲置 ≥180 天 → 14 天 1 次（封顶）
+          { "after": "180d", "interval": "14d" }
+        ]
+      }
+    },
+    // 全量历史扫描（不启用自适应）
+    "deep": {
+      "adaptive": { "enabled": false }
+    },
+    // 直播录制轮询
+    "live": {
+      "adaptive": {
+        "enabled": true,
+        "tiers": [
+          // 刚直播过 → 每 30s 轮询一次
+          { "after": "0d",  "interval": "30s" },
+          // 7 天没开播 → 每 5 分钟
+          { "after": "7d",  "interval": "5m"  },
+          // 30 天没开播 → 每 30 分钟
+          { "after": "30d", "interval": "30m" },
+          // 90 天没开播 → 每 6 小时
+          { "after": "90d", "interval": "6h"  }
+        ]
+      }
+    }
+  },
+
+  // ============================================================
+  // 下载配置（download）
+  // ============================================================
+  "download": {
+    // CDN 下载限速，0 表示不限速
+    "download_requests_per_second": 3.0
+  },
+
+  // ============================================================
+  // 任务配置（tasks[]）
+  // 每项定义一个周期性任务：何时跑、跑什么策略、哪些 creator
+  //
+  // 字段           类型          说明
+  // ──────────────────────────────────────────────────────────────
+  // type           string        任务类型: content_fetch / live_record
+  // enabled        bool          启用/禁用，默认 true
+  // strategy      对象           策略引用与覆写:
+  //   use          string        引用的策略名: "incremental" / "deep" / "live"
+  //   adaptive     对象          可选，覆盖 strategy.<use>.adaptive
+  // request       对象           可选，API 请求速率覆写:
+  //   tick         string        覆盖 API 调用最小间隔，如 "3s"
+  //   jitter       [string,str]  覆盖请求间隔随机抖动，如 ["2s", "4s"]
+  // tag_filter     string[]      标签白名单，只扫匹配的 creator；不填则扫全部
+  // start_at       string        首次执行时间，HH:MM 24h 格式，如 "02:00"
+  // interval       string        窗口/周期: Ns/Nm/Nh/Nd，如 30s, 12h, 1d, 15d
+  // ============================================================
+  "tasks": [
+    {
+      "type": "content_fetch",
+      "enabled": false,
+      "strategy": {
+        "use": "incremental"
+      },
+      "start_at": "02:00",
+      "interval": "12h"
+    },
+    {
+      "type": "content_fetch",
+      "enabled": false,
+      "strategy": {
+        "use": "deep"
+      },
+      "interval": "15d"
+    },
+    {
+      "type": "content_fetch",
+      "enabled": true,
+      "strategy": {
+        "use": "incremental"
+      },
+      "tag_filter": [
+        "follow"
+      ],
+      //"start_at": "17:28",
+      "interval": "30s"
+    },
+    {
+      "type": "live_record",
+      "enabled": false,
+      "strategy": {
+        "use": "live"
+      }
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+# ── Secrets ─────────────────────────────────────────────────────
+# Docker Secrets 优先于 .env 文件，适合对安全性要求更高的部署。
+#
+# 使用方式（二选一）：
+#
+# 方案 A — 仅用 .env（简单）：
+#   1. cp .env.example .env
+#   2. 编辑 .env 中的密码
+#   3. docker compose up -d
+#
+# 方案 B — Docker Secrets（更安全）：
+#   1. echo -n 'your_strong_password' > secrets/postgres_password.txt
+#   2. echo -n 'your_strong_password' > secrets/redis_password.txt
+#   3. docker compose up -d
+#   4. (可选) rm secrets/*.txt   ← 启动后即可删除原文
+#
+# secrets/ 目录默认包含在 .gitignore 中，不会误提交。
+# ────────────────────────────────────────────────────────────────
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: polycrawl-postgres
+    secrets:
+      - postgres_password
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-polycrawl}
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+      - POSTGRES_DB=${POSTGRES_DB:-polycrawl_db}
+      - TZ=${TZ:-Asia/Shanghai}
+    # ports:                # P2: 移除宿主机端口暴露 — 容器间内部通信无需映射
+    #   - "${POSTGRES_PORT:-5432}:5432"   # 如需从宿主机直连调试，取消注释
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-polycrawl} -d ${POSTGRES_DB:-polycrawl_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: polycrawl-redis
+    secrets:
+      - redis_password
+    command: >
+      sh -c 'redis-server --requirepass "$$(cat /run/secrets/redis_password)"'
+    # ports:                # P2: 移除宿主机端口暴露
+    #   - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: polycrawl-api
+    entrypoint: ["/entrypoint.sh"]
+    secrets:
+      - postgres_password
+      - redis_password
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      # 以下两行在不使用 Docker Secrets 时作为默认值
+      # 使用 Secrets 时会被 entrypoint.sh 读取密码后覆盖
+      - POLYCRAWL_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-polycrawl}:${POSTGRES_PASSWORD:-CHANGE_ME_NOW}@postgres:5432/${POSTGRES_DB:-polycrawl_db}
+      - POLYCRAWL_REDIS_URL=redis://:${REDIS_PASSWORD:-CHANGE_ME_NOW}@redis:6379/0
+    command: >
+      sh -c "python -m alembic upgrade head && uvicorn apps.api.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # 媒体文件持久化（可选：挂载 NAS 共享文件夹）
+      - media-data:/app/downloads
+      # 配置文件热加载（源码挂载，便于外部编辑）
+      - ../config:/app/config:ro
+      # 日志持久化
+      - log-data:/app/data/logs
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: polycrawl-worker
+    entrypoint: ["/entrypoint.sh"]
+    secrets:
+      - postgres_password
+      - redis_password
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      # 以下两行在不使用 Docker Secrets 时作为默认值
+      # 使用 Secrets 时会被 entrypoint.sh 读取密码后覆盖
+      - POLYCRAWL_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-polycrawl}:${POSTGRES_PASSWORD:-CHANGE_ME_NOW}@postgres:5432/${POSTGRES_DB:-polycrawl_db}
+      - POLYCRAWL_REDIS_URL=redis://:${REDIS_PASSWORD:-CHANGE_ME_NOW}@redis:6379/0
+    command: ["python", "-m", "services.worker.run"]
+    volumes:
+      - media-data:/app/downloads
+      - ../config:/app/config:ro
+      - log-data:/app/data/logs
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redis-data:
+  media-data:
+  log-data:
+
