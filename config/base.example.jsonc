@@ -6,8 +6,6 @@
     "data_dir": "./data"
   },
   "storage": {
-    "database_url": "postgresql+asyncpg://polycrawl:CHANGE_ME@127.0.0.1:5432/polycrawl_db",
-    "redis_url": "redis://:CHANGE_ME@127.0.0.1:6379/0",
     "media_base_path": "./downloads"
   },
 
