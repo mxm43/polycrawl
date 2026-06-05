@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from packages.core.config.models import CreatorsFile
-from packages.core.db.models import Account, Creator
+from packages.core.db.models import Account, Artifact, Creator
 
 
 async def sync_creators_to_db(
@@ -104,11 +104,25 @@ async def _get_account(
 
 
 async def _delete_missing_creators(session: AsyncSession, keep_keys: set[str]) -> None:
+    """删除配置中不再存在的创作者，但跳过仍有 artifact 的创作者。"""
     if not keep_keys:
-        delete_stmt = delete(Creator)
-    else:
-        delete_stmt = delete(Creator).where(Creator.creator_key.not_in(keep_keys))
-    await session.execute(delete_stmt)
+        return  # 安全保护：不传 keep_keys 时不删除任何 creator
+
+    # 查出所有待删除的 creator
+    result = await session.execute(
+        select(Creator).where(Creator.creator_key.not_in(keep_keys))
+    )
+    for creator in result.scalars().all():
+        # 检查是否有 artifact（通过 accounts 关联）
+        cnt = await session.scalar(
+            select(func.count())
+            .select_from(Artifact)
+            .join(Account, Artifact.account_id == Account.id)
+            .where(Account.creator_id == creator.id)
+        )
+        if cnt and cnt > 0:
+            continue  # 有历史数据，保留
+        await session.delete(creator)
 
 
 async def _delete_missing_accounts(
@@ -122,4 +136,10 @@ async def _delete_missing_accounts(
     for account in existing_accounts:
         key = (account.platform, account.account_type, account.account_url)
         if key not in keep_account_keys:
+            # ── 安全检查：如有 artifact 关联，不能删除 ──
+            cnt = await session.scalar(
+                select(func.count()).select_from(Artifact).where(Artifact.account_id == account.id)
+            )
+            if cnt and cnt > 0:
+                continue  # 有历史数据，保留该 account
             await session.delete(account)
