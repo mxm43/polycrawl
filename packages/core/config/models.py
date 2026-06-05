@@ -30,6 +30,10 @@ class RequestConfig(BaseModel):
     """API 请求速率配置。可定义在 site config 或 task entry 中。"""
     tick: str = Field(default="1s", description="API 调用最小间隔，如 1s、2s、30s")
     jitter: tuple[str, str] = Field(default=("0s", "0s"), description="请求间隔随机抖动范围，如 ['1s', '2s']")
+    platforms: dict[str, RequestConfig] = Field(
+        default_factory=dict,
+        description="按平台覆写 tick/jitter，key 为平台名，如 {\"douyin\": {\"tick\": \"3s\"}}",
+    )
 
     @field_validator("tick")
     @classmethod

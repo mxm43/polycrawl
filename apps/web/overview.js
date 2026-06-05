@@ -106,6 +106,6 @@ function renderAccountsForTaskSelect() {
   const sel = document.getElementById("account-id");
   const accs = state.accounts || [];
   sel.innerHTML = accs.length
-    ? `<option value="">-- ${dict.labels.account} --</option>` + accs.map((a) => `<option value="${a.id}">${escapeHtml(a.display_name || "?")} / ${escapeHtml(a.platform)} / ${escapeHtml(a.account_type)}</option>`).join("")
+    ? `<option value="">-- ${dict.labels.account} --</option>` + accs.map((a) => `<option value="${a.id}">${escapeHtml(a.creator_display_name || a.account_alias || "?")} / ${escapeHtml(a.platform)} / ${escapeHtml(a.account_type)}</option>`).join("")
     : `<option value="">${dict.placeholders.noAccounts}</option>`;
 }

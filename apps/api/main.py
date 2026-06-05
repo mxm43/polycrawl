@@ -54,6 +54,7 @@ from packages.core.config.models import (
 from packages.core.config.watcher import watch_config_dir
 from packages.core.db import db_get_session_factory
 from packages.core.db import db_check_health
+from packages.core.db.urls import redis_get_url
 from packages.core.events import publish_event, subscribe_to_events, subscribe_ws_events, unsubscribe_ws_events
 from packages.core.db.models import Account, Artifact, Creator, LiveStatus, Task, TaskRun
 from packages.core.logging import read_log_file, setup_logging, subscribe_to_logs, subscribe_ws, unsubscribe_ws
@@ -78,25 +79,37 @@ if WEB_DIR.exists():
     app.mount("/assets", StaticFiles(directory=WEB_DIR), name="web-assets")
 
 
-def _push_to_task_queue(task_type: str, task_id: str, account_id: int, params: dict | None = None) -> str | None:
-    """Push a task message to the matching task_{idx} Redis queue.
-    Returns the queue key name, or None if no matching queue found.
+def _push_to_task_queue(task_type: str, task_id: str, account_id: int, params: dict | None = None, platform: str | None = None) -> str | None:
+    """Push a task message to the matching Redis queue.
+
+    Matches by type only (ignoring enabled/disabled), so manually submitted
+    tasks always reach a consumer even when all schedules are disabled.
+    For content_fetch the queue key includes the platform suffix
+    (``task_{idx}:{platform}``), matching the consumer's per-platform listeners.
     """
     state = loader.load_all()
+    logger.info("[push_queue] looking for schedule type=%s platform=%s account_id=%d",
+                task_type, platform or "none", account_id)
     with redis_sync() as r:
         for idx, entry in enumerate(state.base.schedules):
-            if not entry.enabled:
+            if entry.type != task_type:
                 continue
-            if entry.type == task_type:
+            if platform and task_type != "live_record":
+                queue_key = f"task_{idx}:{platform}"
+            else:
                 queue_key = f"task_{idx}"
-                msg = json.dumps({
-                    "task_id": task_id,
-                    "account_id": account_id,
-                    "task_type": task_type,
-                    "params": params or {},
-                })
-                r.rpush(queue_key, msg)
-                return queue_key
+            msg = json.dumps({
+                "task_id": task_id,
+                "account_id": account_id,
+                "task_type": task_type,
+                "params": params or {},
+            })
+            r.rpush(queue_key, msg)
+            logger.info("[push_queue] pushed task=%s to queue=%s (schedule idx=%d, type=%s, platform=%s)",
+                        task_id, queue_key, idx, task_type, platform or "none")
+            return queue_key
+        logger.warning("[push_queue] NO schedule matched type=%s, schedules=%s",
+                       task_type, [(i, e.type, f"enabled={e.enabled}") for i, e in enumerate(state.base.schedules)])
         return None
 
 
@@ -177,6 +190,10 @@ def _task_to_response(task: Task) -> TaskResponse:
         retry_count=task.retry_count,
         max_retries=task.max_retries,
         queue_key=task.queue_key,
+        created_at=task.created_at,
+        started_at=task.started_at,
+        completed_at=task.completed_at,
+        error_message=task.error_message,
     )
 
 
@@ -388,6 +405,9 @@ async def create_task(
     if account is None:
         raise HTTPException(status_code=404, detail=f"Account not found: {req.account_id}")
 
+    logger.info("[create_task] REQUEST account_id=%d task_type=%s platform=%s account_type=%s",
+                req.account_id, req.task_type, account.platform, account.account_type)
+
     task = Task(
         account_id=req.account_id,
         task_type=req.task_type,
@@ -399,8 +419,10 @@ async def create_task(
     try:
         session.add(task)
         await session.flush()
+        logger.info("[create_task] task created id=%s", task.id)
 
-        queue_key = _push_to_task_queue(req.task_type, str(task.id), req.account_id, req.params)
+        queue_key = _push_to_task_queue(req.task_type, str(task.id), req.account_id, req.params, platform=account.platform)
+        logger.info("[create_task] queue_key=%s", queue_key)
 
         task.status = "queued"
         task.queue_key = queue_key or ""
@@ -410,6 +432,7 @@ async def create_task(
 
         await session.commit()
         await session.refresh(task)
+        logger.info("[create_task] DONE task_id=%s queue=%s status=%s", task.id, queue_key, task.status)
 
         publish_event("task_created", {"task_id": str(task.id)})
 
@@ -449,7 +472,10 @@ async def retry_task(task_id: str, session: AsyncSession = Depends(get_db_sessio
     task_run = TaskRun(task_id=task.id, run_number=next_run_number, status="queued")
     session.add(task_run)
 
-    queue_key = _push_to_task_queue(task.task_type, str(task.id), task.account_id, task.params)
+    # Look up account platform for correct queue key
+    retry_account = await session.get(Account, task.account_id)
+    retry_platform = retry_account.platform if retry_account else None
+    queue_key = _push_to_task_queue(task.task_type, str(task.id), task.account_id, task.params, platform=retry_platform)
     task.status = "queued"
     task.queue_key = queue_key or ""
 

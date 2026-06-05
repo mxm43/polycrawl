@@ -28,6 +28,7 @@ _DEFAULT_TTL = 604800  # 7 days
 def get_verify_state(platform: str) -> dict[str, Any]:
     """Return ``{verified_ok, verified_at}`` for a platform, or empty dict."""
     from packages.core.db import redis_sync
+    from packages.core.db.urls import redis_get_url
     url = redis_get_url()
     if not url:
         return {}
@@ -44,6 +45,7 @@ def get_verify_state(platform: str) -> dict[str, Any]:
 def set_verified(platform: str, ok: bool) -> None:
     """Store ``verified_ok`` and ``verified_at`` in Redis with a TTL."""
     from packages.core.db import redis_sync
+    from packages.core.db.urls import redis_get_url
     url = redis_get_url()
     if not url:
         return
@@ -62,6 +64,7 @@ def invalidate(platform: str) -> None:
 def clear(platform: str) -> None:
     """Remove verify state for a platform."""
     from packages.core.db import redis_sync
+    from packages.core.db.urls import redis_get_url
     url = redis_get_url()
     if not url:
         return

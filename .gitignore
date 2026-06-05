@@ -15,3 +15,4 @@ downloads/
 
 # ── 运行时配置（本地修改不跟踪，仓库保留样例） ────────────
 config/
+compose.yaml

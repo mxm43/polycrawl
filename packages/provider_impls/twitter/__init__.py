@@ -293,7 +293,7 @@ class TwitterProvider(BaseProvider, SyncRateLimiter):
         self, screen_name: str, cookies: dict[str, str], tick: str
     ) -> str | None:
         """Resolve @screen_name to rest_id via UserByScreenName query."""
-        self.rate_limit(tick)
+        self.rate_limit_with_jitter(tick)
         headers = _build_headers(cookies)
         variables = json.dumps({
             "screen_name": screen_name,
@@ -324,7 +324,7 @@ class TwitterProvider(BaseProvider, SyncRateLimiter):
         tick: str,
     ) -> list[dict[str, Any]]:
         """Fetch UserMedia timeline, normalized to content items."""
-        self.rate_limit(tick)
+        self.rate_limit_with_jitter(tick)
         headers = _build_headers(cookies)
 
         variables = {

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 from pathlib import Path
 
@@ -18,11 +19,10 @@ from services.worker.consumer import Consumer
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "config"
 _state = ConfigLoader(CONFIG_DIR).load_all()
-_redis_url = redis_get_url()
 _data_dir = _state.base.global_config.get("data_dir", "data")
 _log_dir = CONFIG_DIR.parent / _data_dir / "logs"
 _log_level = _state.base.global_config.get("log_level", "INFO")
-setup_logging(redis_url=_redis_url, log_dir=_log_dir, log_level=_log_level)
+setup_logging(log_dir=_log_dir, log_level=_log_level)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ async def _startup_recovery() -> None:
     from redis.asyncio import Redis
     from sqlalchemy import text
     from packages.core.db import db_get_session_factory
+    from packages.core.db.urls import redis_get_url
 
     # ── DB: fail stale tasks ────────────────────────────────────
     session_factory = db_get_session_factory()
@@ -70,7 +71,7 @@ async def _startup_recovery() -> None:
         live_cleaned = lses_result.rowcount
 
     # ── Redis: drain stale queue items ──────────────────────────
-    r = Redis.from_url(_redis_url, decode_responses=True)
+    r = Redis.from_url(redis_get_url(), decode_responses=True)
     try:
         keys = await r.keys("task_*")
         queue_cleaned = 0
@@ -93,7 +94,8 @@ async def _startup_recovery() -> None:
         # Notify frontend
         try:
             from packages.core.events import publish_event
-            publish_event(_redis_url, "creators_updated", {"reason": "startup_recovery"})
+            from packages.core.db.urls import redis_get_url
+            publish_event(redis_get_url(), "creators_updated", {"reason": "startup_recovery"})
         except Exception:
             pass
 

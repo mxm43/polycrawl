@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import logging
 import time
 from datetime import UTC, datetime
@@ -18,6 +19,17 @@ from packages.core.utils import build_creator_dir, parse_publish_date
 from packages.core.db import db_get_session_factory
 from packages.core.db.urls import redis_get_url
 from services.worker.runtime import get_media_root
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ContentExecutionResult:
+    items_fetched: int = 0
+    items_downloaded: int = 0
+    items_skipped: int = 0
+    bytes_downloaded: int = 0
+
 
 # Per-platform download rate limiting (keyed by platform name).
 _download_last_ts: dict[str, float] = {}
@@ -218,7 +230,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
         if creator is None:
             raise ValueError(f"Creator not found for account_id={account_id}")
 
-        creator_dir = _build_creator_dir(creator.display_name, creator.creator_key)
+        creator_dir = build_creator_dir(creator.display_name, creator.creator_key)
         provider = ProviderRegistry().get(account.platform)
         account_dir = provider.build_account_dir(account)
         download_request = provider.build_download_request(account.account_url)
@@ -296,7 +308,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
                     title = item.get("title")
                     author = item.get("author")
                     file_size = int(item.get("file_size") or 0)
-                    publish_date = _parse_publish_date(item.get("publish_date") or item.get("create_time"))
+                    publish_date = parse_publish_date(item.get("publish_date") or item.get("create_time"))
 
                     seq = int(item.get("sequence", 0))
                     existed = await _find_artifact(session=session, account_id=account_id, platform=account.platform, content_id=content_id, media_kind=media_kind, sequence=seq)
@@ -347,7 +359,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
                                 # Also propagate create_time from enriched detail
                                 refreshed_ts = (refreshed or {}).get("create_time") or 0
                                 if refreshed_ts:
-                                    artifact.publish_date = _parse_publish_date(refreshed_ts)
+                                    artifact.publish_date = parse_publish_date(refreshed_ts)
                                 # Refresh may also change media_kind (e.g. image→video for XHS)
                                 refreshed_kind = str((refreshed or {}).get("media_kind") or "")
                                 if refreshed_kind:
@@ -375,7 +387,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
                         refreshed_url = str((refreshed or {}).get("download_url") or "") if refreshed else ""
                         refreshed_ts = (refreshed or {}).get("create_time") or 0 if refreshed else 0
                         if refreshed_ts:
-                            artifact.publish_date = _parse_publish_date(refreshed_ts)
+                            artifact.publish_date = parse_publish_date(refreshed_ts)
                         if refreshed_url:
                             dest = media_root / file_path
                             try:

@@ -17,14 +17,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import random
 import re
 from pathlib import Path
 
 from redis.asyncio import Redis
 
 from packages.core.config import ConfigLoader
-from packages.core.config.models import parse_duration_to_seconds
 from services.worker.executors import (
     execute_content_fetch,
     execute_live_record,
@@ -46,17 +44,6 @@ ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "config"
 
 
-_TICK_RE = re.compile(r"^(\d+)([smhd])$")
-
-
-def _parse_tick(tick: str) -> float:
-    """Convert '1s', '500ms' etc to seconds. Returns 0 if invalid."""
-    try:
-        return parse_duration_to_seconds(tick)
-    except ValueError:
-        return 0.0
-
-
 class Consumer:
 
     def __init__(self) -> None:
@@ -66,12 +53,15 @@ class Consumer:
     async def start(self) -> None:
         from packages.core.db.urls import redis_get_url
         self._redis = Redis.from_url(redis_get_url(), decode_responses=True)
-        for idx, entry in enumerate(state.base.schedules):
-            if not entry.enabled:
-                continue
+        _state = ConfigLoader(CONFIG_DIR).load_all()
+        queue_list = []
+        for idx, entry in enumerate(_state.base.schedules):
+            # Listen on all schedules (enabled or disabled) so manually
+            # submitted tasks are always consumed regardless of schedule config.
             if entry.type == "live_record":
                 # live_record: single queue, unchanged
                 queue_key = f"task_{idx}"
+                queue_list.append(queue_key)
                 c = asyncio.create_task(self._handle_queue_events(queue_key))
                 self._tasks.append(c)
                 logger.info("[consumer] started consumer for %s (task_%d)", queue_key, idx)
@@ -79,11 +69,13 @@ class Consumer:
                 # content_fetch / other: one coroutine per platform for
                 # true parallelism — each platform has its own queue from
                 # the scheduler, so one slow platform never blocks others.
-                for platform in state.sites:
+                for platform in _state.sites:
                     queue_key = f"task_{idx}:{platform}"
+                    queue_list.append(queue_key)
                     c = asyncio.create_task(self._handle_queue_events(queue_key))
                     self._tasks.append(c)
                     logger.info("[consumer] started consumer for %s (task_%d, %s)", queue_key, idx, platform)
+        logger.info("[consumer] all listening queues: %s", queue_list)
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -92,7 +84,6 @@ class Consumer:
             await self._redis.aclose()
 
     async def _handle_queue_events(self, queue_key: str) -> None:
-        _tick_sec = 0.0
         while True:
             try:
                 raw = await self._redis.blpop(queue_key, timeout=1)
@@ -100,18 +91,11 @@ class Consumer:
                     continue
                 _, data = raw
                 msg = json.loads(data)
+                logger.info("[consumer] RECEIVED from queue=%s task_id=%s account_id=%s task_type=%s",
+                            queue_key, msg.get("task_id"), msg.get("account_id"), msg.get("task_type"))
                 params = msg.get("params") or {}
-                raw_tick = params.get("tick")
                 task_type = msg.get("task_type", "")
-                if raw_tick:
-                    _tick_sec = _parse_tick(raw_tick)
                 await self._execute(msg)
-                if _tick_sec > 0:
-                    # Apply jitter if configured (min/max in seconds)
-                    jitter = params.get("jitter")
-                    if jitter is not None and len(jitter) == 2:
-                        _tick_sec += random.uniform(float(jitter[0]), float(jitter[1]))
-                    await asyncio.sleep(_tick_sec)
             except asyncio.CancelledError:
                 break
             except Exception:

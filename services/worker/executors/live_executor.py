@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import logging
 import time
@@ -11,6 +12,7 @@ from sqlalchemy import select
 
 from packages.core.providers.registry import ProviderRegistry
 from packages.core.db.models import Account, Creator, LiveSession, LiveStatus, Task
+from packages.core.db.session import db_get_session_factory
 from packages.core.utils import build_creator_dir, now_utc_naive
 from packages.core.db.urls import redis_get_url
 from services.worker.runtime import get_media_root
@@ -26,7 +28,7 @@ def _stop_key(account_id: int) -> str:
 
 
 
-# ── live state updater ─────────────────────────────────────────
+# 鈹€鈹€ live state updater 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _update_last_live(account_id: int) -> None:
@@ -91,7 +93,7 @@ async def execute_live_monitor(task_id: str, account_id: int) -> LiveMonitorResu
 async def execute_live_record(task_id: str, account_id: int) -> LiveRecordResult:
     """Check live status and start background recording if live.
 
-    Fast path — does NOT block on download.  The actual stream download
+    Fast path 鈥?does NOT block on download.  The actual stream download
     runs in a background asyncio task that updates Task/LiveSession on
     completion.
     """
@@ -113,7 +115,7 @@ async def execute_live_record(task_id: str, account_id: int) -> LiveRecordResult
         provider = ProviderRegistry().get(account.platform)
         payload = provider.build_live_session_payload(task.params, account.account_url)
 
-    # ── resolve live stream (fast API call) ────────────────────
+    # 鈹€鈹€ resolve live stream (fast API call) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     _LOG.info("[API] %s | live-stream %s/%s %s",
         creator.display_name or creator.creator_key,
         account.platform, account.account_type,
@@ -134,27 +136,27 @@ async def execute_live_record(task_id: str, account_id: int) -> LiveRecordResult
         raise RuntimeError("live stream url is empty")
     stream_url = provider.normalize_stream_url(stream_url)
 
-    # ── extract room_id for path disambiguation ────────────────
+    # 鈹€鈹€ extract room_id for path disambiguation 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     room_id = str(stream_info.get("room_id") or provider.extract_account_key(account.account_url, account.account_type) or "")
 
-    # ── prepare download parameters ────────────────────────────
+    # 鈹€鈹€ prepare download parameters 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     download_req = provider.build_live_download_request(account.account_url)
     download_headers = dict(download_req.get("headers") or {})
     download_cookies = dict(download_req.get("cookies") or {})
 
     duration_limit = int(payload.get("duration_seconds", 0) or 0)
     bytes_limit = int(payload.get("total_bytes", 0) or 0)
-    creator_dir = _build_creator_dir(creator.display_name, creator.creator_key)
-    now = _now_utc_naive().strftime("%Y%m%d_%H%M%S")
+    creator_dir = build_creator_dir(creator.display_name, creator.creator_key)
+    now = now_utc_naive().strftime("%Y%m%d_%H%M%S")
     output_file_path = f"{creator_dir}/{account.platform}/live/{room_id}/{now}.flv"
     media_root = get_media_root()
     final_path = media_root / output_file_path
 
-    # ── create LiveSession record ──────────────────────────────
+    # 鈹€鈹€ create LiveSession record 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     async with session_factory() as session:
         live_session = LiveSession(
             account_id=account_id,
-            started_at=_now_utc_naive(),
+            started_at=now_utc_naive(),
             status="recording",
             output_file_path=output_file_path,
         )
@@ -168,7 +170,7 @@ async def execute_live_record(task_id: str, account_id: int) -> LiveRecordResult
         await session.commit()
         ls_id = live_session.id
 
-    # ── spawn background download ─────────────────────────────
+    # 鈹€鈹€ spawn background download 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     bg_task = asyncio.create_task(_background_record(
         task_id=task_id, account_id=account_id,
         session_id=str(ls_id),
@@ -204,9 +206,9 @@ async def _background_record(
     ls_uuid = uuid.UUID(session_id)
 
     _LOG.info("[bg] start account=%d session=%s path=%s", account_id, session_id, output_file_path)
-    started_at = _now_utc_naive()
+    started_at = now_utc_naive()
 
-    # ── stop-signal monitor ─────────────────────────────────────
+    # 鈹€鈹€ stop-signal monitor 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     # The API sets polycrawl:live:stop:{account_id} when a user cancels.
     stop_event = asyncio.Event()
     _redis_url = redis_get_url()
@@ -230,7 +232,7 @@ async def _background_record(
             ),
             timeout=download_timeout,
         )
-        ended_at = _now_utc_naive()
+        ended_at = now_utc_naive()
         actual_duration = max(int((ended_at - started_at).total_seconds()), 0)
         session_status = "completed"
         _LOG.info("[bg] success account=%d bytes=%d duration=%d", account_id, downloaded_bytes, actual_duration)
@@ -258,7 +260,7 @@ async def _background_record(
         raise
     except Exception as exc:
         _LOG.exception("[bg] failed account=%d", account_id)
-        ended_at = _now_utc_naive()
+        ended_at = now_utc_naive()
         async with session_factory() as session:
             ls = await session.get(LiveSession, ls_uuid)
             if ls:
@@ -471,7 +473,7 @@ async def _upsert_live_status(
     recorded_bytes: int | None = None,
     error_message: str | None = None,
 ) -> None:
-    now = _now_utc_naive()
+    now = now_utc_naive()
     result = await session.execute(select(LiveStatus).where(LiveStatus.account_id == account_id))
     item = result.scalars().first()
 
@@ -499,3 +501,4 @@ async def _upsert_live_status(
     item.recorded_bytes = recorded_bytes
     item.error_message = error_message
     item.error_time = now if error_message else None
+

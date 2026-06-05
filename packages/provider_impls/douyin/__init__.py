@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from packages.core.providers.base import BaseProvider, SyncRateLimiter
+from packages.core.providers.base import BaseProvider, SyncRateLimiter, _safe
 from packages.core.utils import sanitize_filename, build_creator_dir
 from packages.provider_impls.douyin.api_client import (
     _extract_room_id,
@@ -22,13 +22,7 @@ from packages.provider_impls.douyin.api_client import (
 # /app/packages/providers/douyin/__init__.py -> project root is parents[3] (/app)
 _ROOT = Path(__file__).resolve().parents[3]
 _CONFIG_DIR = _ROOT / "config"
-_UNSAFE = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
 _CST = timezone(timedelta(hours=8))
-
-
-def _safe(value: str, max_len: int = 50) -> str:
-    text = _UNSAFE.sub("_", value).strip(" _")
-    return text[:max_len] if text else "unnamed"
 
 
 def _replace_str(value: str, max_len: int = 20) -> str:
@@ -126,7 +120,7 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
     ) -> list[dict[str, Any]]:
         """Fetch one page, store pagination state on instance, return items."""
         # Class-level rate limit: shared across all API calls (fetch + refresh)
-        self.rate_limit(tick)
+        self.rate_limit_with_jitter(tick)
         from packages.provider_impls.douyin.api_client import DouyinAPIClient, _normalise_items
 
         async with DouyinAPIClient(cookies, tick=tick) as client:
@@ -163,7 +157,7 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
 
         # Use stored tick from fetch_content_items, or fallback to config
         tick: str = getattr(self, "_tick", None) or _get_strategy_tick(_load_base_config())
-        self.rate_limit(tick)
+        self.rate_limit_with_jitter(tick)
 
         items = asyncio.run(fetch_post_detail(content_id, cookies, tick=tick))
         if not items:
@@ -269,7 +263,9 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
             k: str(v) for k, v in (site_cfg.get("platform") or {}).get("cookies", {}).items() if v
         }
         base_cfg = _load_base_config()
-        tick: str = _get_strategy_tick(base_cfg)
+        tick: str = str(task_params.get("tick") or _get_strategy_tick(base_cfg))
+        jitter = task_params.get("jitter")
+        self.rate_limit_with_jitter(tick, jitter, label="live-detect")
 
         try:
             room_id = _extract_room_id(account_url)
@@ -331,7 +327,9 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
             k: str(v) for k, v in (site_cfg.get("platform") or {}).get("cookies", {}).items() if v
         }
         base_cfg = _load_base_config()
-        tick: str = _get_strategy_tick(base_cfg)
+        tick: str = str(task_params.get("tick") or _get_strategy_tick(base_cfg))
+        jitter = task_params.get("jitter")
+        self.rate_limit_with_jitter(tick, jitter, label="live-resolve")
 
         direct_url = str(task_params.get("stream_url") or "").strip()
         if direct_url:

@@ -14,7 +14,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from redis.asyncio import Redis
@@ -24,6 +24,7 @@ from packages.core.config import ConfigLoader
 from packages.core.config.models import parse_duration_to_seconds
 from packages.core.config.watcher import watch_config_dir
 from packages.core.db.models import Account, Creator, Task, TaskRun
+from packages.core.db.urls import redis_get_url
 from packages.core.events import publish_event
 from packages.core.sync import sync_creators_to_db
 from packages.core.db import db_get_session_factory
@@ -96,18 +97,19 @@ class Scheduler:
 
     async def start(self) -> None:
         self._redis = Redis.from_url(redis_get_url(), decode_responses=True)
+        _state = ConfigLoader(CONFIG_DIR).load_all()
 
         # Sync creators.jsonc -> DB so live accounts are available
         try:
             session_factory = db_get_session_factory()
-            await sync_creators_to_db(session_factory, state.creators)
+            await sync_creators_to_db(session_factory, _state.creators)
         except Exception:
             logger.exception("[scheduler] failed to sync creators to DB")
 
-        self._register_all(state)
-        self._cache_live_config(state)
+        self._register_all(_state)
+        self._cache_live_config(_state)
         # Init live tier groups and start live dispatch loop
-        await self._init_live_tiers(state)
+        await self._init_live_tiers(_state)
         self._live_tasks.append(asyncio.create_task(self._handle_live_events()))
         # Start file watcher for config hot-reload
         config_queue, self._observer = await watch_config_dir(CONFIG_DIR)
@@ -225,13 +227,25 @@ class Scheduler:
                 continue  # managed by tier-driven _live_dispatch_loop
             if not entry.interval:
                 continue
-            self._schedule_next(idx, entry, state)
+            self._schedule_next(idx, entry, state, first=True)
 
-    def _schedule_next(self, idx: int, entry, state) -> None:
+    def _schedule_next(self, idx: int, entry, state, *, first: bool = False) -> None:
         interval_secs = self._parse_interval(entry.interval)
+        if first and entry.start_at:
+            # Calculate delay until next occurrence of start_at (HH:MM)
+            now = datetime.now()
+            today = now.strftime("%Y-%m-%d")
+            target = datetime.strptime(f"{today} {entry.start_at}", "%Y-%m-%d %H:%M")
+            if target <= now:
+                # Today's window already passed — schedule for tomorrow
+                target += timedelta(days=1)
+            delay = (target - now).total_seconds()
+            logger.info("[scheduler] task_%d: first dispatch at %s (in %.0fs)", idx, target.strftime("%H:%M"), delay)
+        else:
+            delay = interval_secs if not first else 0.0
         loop = asyncio.get_event_loop()
         h = loop.call_later(
-            interval_secs,
+            delay,
             lambda: asyncio.create_task(self._dispatch(idx, entry, state)),
         )
         self._timers[idx] = h
@@ -322,6 +336,7 @@ class Scheduler:
         session_factory = db_get_session_factory()
         query = select(Account.id).where(
             Account.account_type == "live",
+            Account.scheduled == True,
         )
         async with session_factory() as session:
             all_ids = [row[0] for row in (await session.execute(query)).all()]
@@ -513,6 +528,7 @@ class Scheduler:
         # ── resolve accounts ────────────────────────────────────
         query = select(Account.id, Account.platform).where(
             Account.account_type == account_type,
+            Account.scheduled == True,
         )
         if entry.tag_filter:
             matching_keys = {
@@ -614,10 +630,15 @@ class Scheduler:
         default_tick = req_site.get("tick") or "1s"
         default_jitter = req_site.get("jitter") or ("0s", "0s")
 
+        # Per-platform task override (task entry > site config > hardcoded default)
+        platform_req = r.platforms.get(platform) if r and r.platforms else None
+
         for account_id in account_ids:
             # resolve tick & jitter
-            tick = (r.tick if r and r.tick else None) or default_tick
-            raw_jitter = (r.jitter if r and r.jitter else None) or default_jitter
+            tick = (platform_req.tick if platform_req and platform_req.tick else None) or \
+                   (r.tick if r and r.tick else None) or default_tick
+            raw_jitter = (platform_req.jitter if platform_req and platform_req.jitter else None) or \
+                         (r.jitter if r and r.jitter else None) or default_jitter
 
             # ── adaptive skip ────────────────────────────────────
             if adapt_cfg.enabled and adapt_cfg.tiers:

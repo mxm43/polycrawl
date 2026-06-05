@@ -161,7 +161,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
         tick: str = str(task_params.get("tick") or "1s")
 
         # Rate-limit before listing API call
-        self.rate_limit(tick)
+        self.rate_limit_with_jitter(tick, task_params.get("jitter"), label="listing")
         cursor: str = str(task_params.get("cursor") or "")
         result = fetch_notes(user_id, cookies, cursor=cursor)
         raw_notes = result.get("notes", [])
@@ -173,7 +173,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
             xsec_token = str(note.get("xsec_token") or "")
             if note_id and xsec_token and cookies:
                 try:
-                    self.rate_limit(tick)
+                    self.rate_limit_with_jitter(tick, task_params.get("jitter"), label="enrich")
                     detail = fetch_note_detail(note_id, xsec_token, cookies)
                     if detail:
                         note["_enriched"] = detail

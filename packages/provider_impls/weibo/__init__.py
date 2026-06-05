@@ -8,7 +8,6 @@ Cookies (from config/sites/weibo.jsonc) are required for authentication.
 from __future__ import annotations
 
 import logging
-import random
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -230,17 +229,10 @@ class WeiboProvider(BaseProvider, SyncRateLimiter):
         to avoid rate limiting. Returns (items, has_more) on success,
         or (None, False) to trigger fallback.
         """
-        # Rate limit by tick config (task dispatch → API call spacing)
+        # Rate limit by tick config with optional jitter (page-to-page jitter)
         tick = str(task_params.get("tick") or "10s") if task_params else "10s"
-        self.rate_limit(tick)
-
-        # Additional random delay from jitter (page-to-page jitter)
-        if task_params:
-            jitter = task_params.get("jitter")
-            if jitter is not None and len(jitter) == 2:
-                delay = random.uniform(float(jitter[0]), float(jitter[1]))
-                logger.info("[weibo] page delay %.1fs for page %d", delay, page)
-                time.sleep(delay)
+        jitter = task_params.get("jitter") if task_params else None
+        self.rate_limit_with_jitter(tick, jitter, label=f"page {page}")
 
         url = f"https://m.weibo.cn/api/container/getIndex?containerid=230413{uid}&page={page}&count=20"
         headers = {
