@@ -81,6 +81,7 @@ async def _download_file(
     timeout: float = 180.0,
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
+    proxy: str | None = None,
 ) -> int:
     """Stream-download *download_url* to *dest*.  Returns bytes written."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -89,12 +90,15 @@ async def _download_file(
     has_raw_cookie = any(k.lower() == "cookie" for k in (headers or {}).keys())
     effective_cookies = {} if has_raw_cookie else (cookies or {})
     try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            follow_redirects=True,
-            headers=headers,
-            cookies=effective_cookies,
-        ) as client:
+        client_kwargs: dict[str, Any] = {
+            "timeout": timeout,
+            "follow_redirects": True,
+            "headers": headers,
+            "cookies": effective_cookies,
+        }
+        if proxy:
+            client_kwargs["proxy"] = proxy
+        async with httpx.AsyncClient(**client_kwargs) as client:
             async with client.stream("GET", download_url) as resp:
                 resp.raise_for_status()
                 with tmp.open("wb") as fh:
@@ -241,6 +245,8 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
         # Producer fetches pages, consumer downloads items concurrently.
         strategy = task.params.get("strategy", "incremental")
         site_cfg = cfg.sites.get(account.platform, {})
+        # Generic proxy support: read from site config (e.g. "proxy": "http://host:port")
+        download_proxy: str | None = site_cfg.get("proxy") or None
         cf = site_cfg.get("content_fetch") or {}
         look_ahead = int(cf.get("look_ahead_pages") or 0)
 
@@ -346,7 +352,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
                         dest = media_root / file_path
                         try:
                             await _download_rate_limit(account.platform, download_rps)
-                            actual_size = await _download_file(download_url, dest, headers=download_headers, cookies=download_cookies)
+                            actual_size = await _download_file(download_url, dest, headers=download_headers, cookies=download_cookies, proxy=download_proxy)
                             artifact.status = "completed"
                             logger.info("Downloaded %s -> %s (%d bytes)", content_id, dest, actual_size)
                         except Exception as exc:
@@ -366,7 +372,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
                                     artifact.media_kind = refreshed_kind
                                 if refreshed_url and refreshed_url != download_url:
                                     await _download_rate_limit(account.platform, download_rps)
-                                    actual_size = await _download_file(refreshed_url, dest, headers=download_headers, cookies=download_cookies)
+                                    actual_size = await _download_file(refreshed_url, dest, headers=download_headers, cookies=download_cookies, proxy=download_proxy)
                                     artifact.status = "completed"
                                     retried = True
                             except Exception:
@@ -391,7 +397,7 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
                         if refreshed_url:
                             dest = media_root / file_path
                             try:
-                                actual_size = await _download_file(refreshed_url, dest, headers=download_headers, cookies=download_cookies)
+                                actual_size = await _download_file(refreshed_url, dest, headers=download_headers, cookies=download_cookies, proxy=download_proxy)
                                 artifact.status = "completed"
                                 logger.info("Enriched download %s -> %s (%d bytes)", content_id, dest, actual_size)
                             except Exception as exc:
@@ -428,9 +434,9 @@ async def execute_content_fetch(task_id: str, account_id: int) -> ContentExecuti
 
     # ── persist cursor so next dispatch resumes pagination ─────
     try:
-        cursor_val = task.params.get("cursor", 0)
+        cursor_val = task.params.get("cursor", "")
         if not provider.has_more:
-            cursor_val = 0
+            cursor_val = ""
         from redis import Redis as _SyncRedis
         _r = _SyncRedis.from_url(redis_get_url(), decode_responses=True)
         _r.set(f"polycrawl:incremental:cursor:{account_id}", str(cursor_val))

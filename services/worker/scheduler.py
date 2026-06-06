@@ -656,7 +656,11 @@ class Scheduler:
             # ── cursor ──────────────────────────────────────────
             params: dict = {"tick": tick, "account_id": account_id, **extra_params}
             cursor_key = f"polycrawl:incremental:cursor:{account_id}"
-            params["cursor"] = int(await self._redis.get(cursor_key) or 0)
+            raw_cursor = await self._redis.get(cursor_key)
+            if raw_cursor is not None and raw_cursor != b"0" and raw_cursor != "0":
+                params["cursor"] = raw_cursor.decode() if isinstance(raw_cursor, bytes) else str(raw_cursor)
+            else:
+                params["cursor"] = ""
             if raw_jitter and len(raw_jitter) == 2:
                 params["jitter"] = [parse_duration_to_seconds(raw_jitter[0]), parse_duration_to_seconds(raw_jitter[1])]
 

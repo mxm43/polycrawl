@@ -18,5 +18,6 @@
   "request": {
     "tick": "3s",
     "jitter": ["1s", "3s"]
-  }
+  },
+  "proxy": "http://host:port"  // 可选，HTTP 代理地址（如 "http://192.168.0.66:7890")
 }

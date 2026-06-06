@@ -119,6 +119,21 @@ class BaseProvider(ABC):
     account_types: list[str] = ["profile", "live"]
     _config_dir: Path | None = None
 
+    # Per-instance site config cache (populated on first access)
+    _site_config: dict[str, Any] | None = None
+
+    @property
+    def proxy(self) -> str | None:
+        """Proxy URL from the platform's site config, or None."""
+        cfg = self._get_site_config()
+        return cfg.get("proxy") or None
+
+    def _get_site_config(self) -> dict[str, Any]:
+        """Return cached site config for this provider's platform."""
+        if self._site_config is None:
+            self._site_config = self.load_site_config(self.platform)
+        return self._site_config
+
     @staticmethod
     def load_site_config(platform: str) -> dict[str, Any]:
         """Read site config for the given platform.
