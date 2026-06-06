@@ -40,6 +40,7 @@ from apps.api.schemas import (
     TaskResponse,
 )
 from packages.core.config import ConfigLoader
+from packages.core.config.loader import SITE_CONFIG_FILES
 from packages.core.config.creator_keys import DuplicateCreatorKeyError, ensure_no_duplicates, generate_creator_key
 from packages.core.config.models import parse_duration_to_seconds
 from packages.core.config.jsonc import load_jsonc, update_jsonc_key
@@ -963,7 +964,10 @@ def login_status() -> list[dict[str, object]]:
         return results
 
     now_ts = int(time.time())
-    for fpath in sorted(sites_dir.glob("*.jsonc")):
+    for filename in SITE_CONFIG_FILES:
+        fpath = sites_dir / filename
+        if not fpath.exists():
+            continue
         platform_name = fpath.stem
         try:
             cfg = load_jsonc(fpath)

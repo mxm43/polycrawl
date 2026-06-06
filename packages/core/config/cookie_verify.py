@@ -49,6 +49,7 @@ def set_verified(platform: str, ok: bool) -> None:
     url = redis_get_url()
     if not url:
         return
+    data = {"verified_ok": ok, "verified_at": int(time.time())}
     try:
         with redis_sync() as r:
             r.setex(_KEY_PREFIX + platform, _DEFAULT_TTL, json.dumps(data))

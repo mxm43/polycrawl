@@ -176,12 +176,53 @@ function _timeAgo(seconds) {
 
 function _cookieStatusBadge(status) {
   if (!status.has_cookies) return `<span class="badge badge-err">未设置</span>`;
-  // verified_ok=false means explicitly tested and failed
+  // Explicit verify result takes precedence over age-based heuristics.
+  if (status.verified_ok === true) return `<span class="badge badge-ok">已验证</span>`;
   if (status.verified_ok === false) return `<span class="badge badge-err">已验证失败</span>`;
   if (status.critical) return `<span class="badge badge-err">已过期(>7天)</span>`;
   if (status.expired) return `<span class="badge badge-warn">即将过期(>24h)</span>`;
-  if (status.verified_ok === true) return `<span class="badge badge-ok">已验证</span>`;
   return `<span class="badge badge-warn">未验证</span>`;
+}
+
+/** Refresh a single platform card's badge & status details without full re-render. */
+async function _refreshPlatformCard(platform) {
+  let statuses;
+  try {
+    statuses = await api("/login/status");
+  } catch {
+    return;
+  }
+  const st = statuses.find(s => s.platform === platform);
+  if (!st) return;
+
+  const card = document.querySelector(`.login-platform-card[data-platform="${platform}"]`);
+  if (!card) return;
+
+  // ── Update badge ──
+  const platId = card.querySelector(".plat-id");
+  if (platId) {
+    const h3 = platId.querySelector("h3");
+    if (h3) {
+      platId.innerHTML = h3.outerHTML + _cookieStatusBadge(st);
+    }
+  }
+
+  // ── Update status detail line ──
+  const statusLine = [
+    `${st.cookie_count} 个 cookie`,
+    st.verified_ok === true ? "✓ 已验证通过" : "",
+    st.verified_ok === false ? "✗ 验证失败" : "",
+    st.saved_at_iso ? `保存于 ${_timeAgo(st.elapsed_seconds)}` : "",
+  ].filter(Boolean).join(" · ");
+  const detailEl = card.querySelector(".status-detail");
+  if (detailEl) detailEl.textContent = statusLine;
+
+  // ── Clear transient test-result ──
+  const testResult = document.getElementById(`test-result-${platform}`);
+  if (testResult) {
+    testResult.textContent = "";
+    testResult.style.color = "";
+  }
 }
 
 async function renderLoginPage() {
@@ -310,7 +351,7 @@ async function renderLoginPage() {
         });
         result.textContent = "Cookies 已保存！";
         result.style.color = "var(--success)";
-        setTimeout(() => renderLoginPage(), 1500);
+        setTimeout(() => _refreshPlatformCard(platform), 1000);
       } catch (e) {
         result.textContent = "保存失败: " + e.message;
         result.style.color = "var(--danger)";
@@ -385,7 +426,7 @@ async function renderLoginPage() {
           resultEl.style.color = "var(--danger)";
         }
         // Refresh card badges after verification
-        setTimeout(() => renderLoginPage(), 2000);
+        setTimeout(() => _refreshPlatformCard(platform), 1000);
       } catch (e) {
         resultEl.textContent = "请求失败: " + e.message;
         resultEl.style.color = "var(--danger)";

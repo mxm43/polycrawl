@@ -11,6 +11,15 @@ from .jsonc import dump_json, load_jsonc
 from .models import BaseConfig, ConfigState, CreatorsFile
 
 
+# ── Site config files we care about ──────────────────────────
+SITE_CONFIG_FILES: list[str] = [
+    "douyin.jsonc",
+    "twitter.jsonc",
+    "weibo.jsonc",
+    "xiaohongshu.jsonc",
+]
+
+
 class ConfigLoader:
     """Loads and validates file-based Spider configuration."""
 
@@ -84,7 +93,10 @@ class ConfigLoader:
         if not self.sites_dir.exists():
             return sites
 
-        for path in sorted(self.sites_dir.glob("*.jsonc")):
+        for filename in SITE_CONFIG_FILES:
+            path = self.sites_dir / filename
+            if not path.exists():
+                continue
             try:
                 sites[path.stem] = load_jsonc(path)
             except (ValueError, ValidationError) as exc:
