@@ -123,7 +123,7 @@ async def _reload_config() -> None:
         if session_factory is not None:
             await sync_creators_to_db(session_factory, state.creators)
         if redis_url:
-            publish_event(redis_url, "creators_updated", {})
+            publish_event("creators_updated", {})
     except Exception as exc:
         logger.warning("Config reload failed (kept previous): %s", exc)
 

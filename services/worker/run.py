@@ -95,7 +95,7 @@ async def _startup_recovery() -> None:
         try:
             from packages.core.events import publish_event
             from packages.core.db.urls import redis_get_url
-            publish_event(redis_get_url(), "creators_updated", {"reason": "startup_recovery"})
+            publish_event("creators_updated", {"reason": "startup_recovery"})
         except Exception:
             pass
 
