@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM python:3.11-slim AS builder
 
 WORKDIR /build
@@ -10,7 +9,6 @@ FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -1,5 +1,3 @@
-import asyncio
-import aiohttp
 import time
 import random
 import uuid
@@ -68,7 +66,7 @@ class Note:
 
 
         # 点赞笔记
-    async def like_note(self, note_id: str) -> aiohttp.ClientResponse:
+    def like_note(self, note_id: str) :
         """点赞笔记
 
         Args:
@@ -81,10 +79,10 @@ class Note:
         data = {
             "note_oid": note_id
         }
-        return await self.session.request(method="post", url=url, data=data)
+        return self.session.request(method="post", url=url, data=data)
 
     # 获取笔记详情
-    async def note_detail(self, note_id: str, xsec_token: str) -> aiohttp.ClientResponse:
+    def note_detail(self, note_id: str, xsec_token: str) :
         """获取笔记详情
 
         Args:
@@ -103,10 +101,10 @@ class Note:
             'xsec_token':xsec_token
         }
 
-        return await self.session.request(method="post", url=url, data=data)
+        return self.session.request(method="post", url=url, data=data)
 
     # 搜索笔记
-    async def search_notes(self,keyword: str, page: int = 2, page_size: int = 20, sort: str = "general", note_type: int = 0) -> aiohttp.ClientResponse:
+    def search_notes(self,keyword: str, page: int = 2, page_size: int = 20, sort: str = "general", note_type: int = 0) :
         """搜索笔记
 
         Args:
@@ -132,10 +130,10 @@ class Note:
                 "avif"
             ]
         }
-        return await self.session.request("post", url=uri, json=data)
+        return self.session.request("post", url=uri, json=data)
 
     # 搜索用户笔记
-    async def search_user_notes(self, user_id: str, num: int = 30, cursor: str = "") -> aiohttp.ClientResponse:
+    def search_user_notes(self, user_id: str, num: int = 30, cursor: str = "") :
         """搜索用户笔记
 
         Args:
@@ -153,10 +151,10 @@ class Note:
             # "xsec_token": "ABYdlTOd3-PPBne2xHkKi1fRfNr-8noY9mu5DEZ3X0rZs=",
             "xsec_source": "pc_feed"
         }
-        return await self.session.request("get", url=url, params=params)
+        return self.session.request("get", url=url, params=params)
 
     # 进入笔记 - 上报系统
-    async def enter_metrics_report(self, note_id: str, note_type: int, request_id : str, viewer_id: str, author_id: str) -> aiohttp.ClientResponse:
+    def enter_metrics_report(self, note_id: str, note_type: int, request_id : str, viewer_id: str, author_id: str) :
         """进入笔记
 
         Args:
@@ -198,10 +196,10 @@ class Note:
                 "platform": "web"
             }
         }
-        return await self.session.request("post", url=url, data=data)
+        return self.session.request("post", url=url, data=data)
 
     # 退出笔记 - 上报系统
-    async def exit_metrics_report(self, note_id: str, note_type: int, request_id : str, viewer_id: str, author_id: str, stay_seconds: int) -> aiohttp.ClientResponse:
+    def exit_metrics_report(self, note_id: str, note_type: int, request_id : str, viewer_id: str, author_id: str, stay_seconds: int) :
         """退出笔记
 
         Args:
@@ -244,10 +242,10 @@ class Note:
                 "platform": "web"
             }
         }
-        return await self.session.request("post", url=url, data=data)
+        return self.session.request("post", url=url, data=data)
 
     # 增加笔记阅读数
-    async def add_note_readnum(self, note_id: str, xsec_token: str) -> aiohttp.ClientResponse:
+    def add_note_readnum(self, note_id: str, xsec_token: str) :
         """增加笔记阅读数
 
         Args:
@@ -258,29 +256,29 @@ class Note:
             增加阅读数结果
         """
 
-        user_info_res = await self.session.apis.auth.get_self_simple_info()
+        user_info_res = self.session.apis.auth.get_self_simple_info()
         viewer_id = user_info_res.json()["data"]["user_id"]
 
-        note_detail_res = await self.note_detail(note_id, xsec_token)
+        note_detail_res = self.note_detail(note_id, xsec_token)
         note_card = note_detail_res.json()["data"]["items"][0]["note_card"]
         author_id = note_card['user']['user_id']
         note_type = 1 if note_card['type'] == "normal" else 2
 
         request_id = str(uuid.uuid4())
 
-        enter_note_res = await self.enter_metrics_report(note_id=note_id, note_type=note_type, request_id=request_id, viewer_id=viewer_id, author_id=author_id)
+        enter_note_res = self.enter_metrics_report(note_id=note_id, note_type=note_type, request_id=request_id, viewer_id=viewer_id, author_id=author_id)
 
         if random.choice([True, False]):
             return enter_note_res
 
         stay_seconds = random.randint(3, 15)
-        await asyncio.sleep(stay_seconds)
+        asyncio.sleep(stay_seconds)
 
-        exit_note_res = await self.exit_metrics_report(note_id=note_id, note_type=note_type, request_id=request_id, viewer_id=viewer_id, author_id=author_id, stay_seconds=stay_seconds)
+        exit_note_res = self.exit_metrics_report(note_id=note_id, note_type=note_type, request_id=request_id, viewer_id=viewer_id, author_id=author_id, stay_seconds=stay_seconds)
         return exit_note_res
 
     # 推荐页
-    async def get_homefeed(self, category: HomeFeedCategory, cursor_score: str = "", note_index: int = 0) -> aiohttp.ClientResponse:
+    def get_homefeed(self, category: HomeFeedCategory, cursor_score: str = "", note_index: int = 0) :
         """刷推荐页
 
         Args:
@@ -308,5 +306,6 @@ class Note:
             ],
             "need_filter_image": False
         }
-        return await self.session.request("post", url=url, data=data)
+        return self.session.request("post", url=url, data=data)
+
 

@@ -1033,7 +1033,16 @@ def verify_platform_cookies(req: _VerifyRequest) -> dict[str, object]:
     try:
         if platform == "xiaohongshu":
             # Use user/me endpoint with existing signer
-            from packages.provider_impls.xiaohongshu.xs_signer import XHSignatureSigner, SessionManager
+            try:
+                from packages.provider_impls.xiaohongshu.xs_signer import XHSignatureSigner, SessionManager
+            except ImportError:
+                from packages.provider_impls.xiaohongshu.encrypt.signer import generate_a1_and_webId
+                XHSignatureSigner = None
+                SessionManager = None
+            if XHSignatureSigner is None:
+                result["valid"] = False
+                result["detail"] = "小红书登录模块未加载"
+                return result
             from packages.provider_impls.xiaohongshu.xs_config import CryptoConfig
             ua = cookies_dict.get("ua") or CryptoConfig().PUBLIC_USERAGENT
             signer = XHSignatureSigner(CryptoConfig().with_overrides(PUBLIC_USERAGENT=ua))

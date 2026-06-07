@@ -1,4 +1,4 @@
-from .auth import Authentication
+﻿from .auth import Authentication
 from .comments import Comments
 from .note import Note
 from .user import User
@@ -9,3 +9,4 @@ class APIModule:
         self.comments = Comments(__session)
         self.note = Note(__session)
         self.user = User(__session)
+

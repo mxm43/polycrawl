@@ -1,15 +1,19 @@
-"""Xiaohongshu API signer — uses RedCrack as a library for authentication."""
+"""Xiaohongshu API signer — uses RedCrack synchronously."""
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
+import sys
+from pathlib import Path
 from typing import Any
 
-import aiohttp
+# RedCrack uses absolute imports (from request.web...), so add its root to path
+_RCROOT = str(Path(__file__).resolve().parent / "redcrack")
+if _RCROOT not in sys.path:
+    sys.path.insert(0, _RCROOT)
 
-from packages.provider_impls.xiaohongshu.redcrack.request.web.xhs_session import (
+from request.web.xhs_session import (  # noqa: E402
+    XHS_Session,
     create_xhs_session,
 )
 
@@ -20,53 +24,49 @@ _API_FEED = "/api/sns/web/v1/feed"
 
 
 class _XHSClient:
-    """Async context manager wrapping a RedCrack session.
+    """Sync context manager wrapping a RedCrack session.
 
-    Usage::
-
-        async with _XHSClient(cookies) as client:
-            notes = await client.search_user_notes(user_id, cursor)
+    Follows the same pattern as ``test_user_profile.py``:
+    create session (full init), then override cookies with config values.
     """
 
     def __init__(self, cookies: dict[str, str]) -> None:
         self._cookies = dict(cookies)
-        self._session = None
+        self._session: XHS_Session | None = None
 
-    async def __aenter__(self) -> _XHSClient:
+    def __enter__(self) -> _XHSClient:
         web_session = self._cookies.get("web_session", "")
-        self._session = await create_xhs_session(web_session=web_session)
-        # Override auto-generated cookies with config cookies
+        self._session = create_xhs_session(web_session=web_session)
+        # Clear all cookies then set config cookies (avoid CookieConflict)
+        for key in list(self._session._session.cookies.keys()):
+            self._session._session.cookies.pop(key)
         for key, value in self._cookies.items():
-            self._session._session.cookie_jar.update_cookies({key: value})
+            self._session._session.cookies.set(key, value, domain="")
         return self
 
-    async def __aexit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: Any) -> None:
         if self._session:
-            await self._session.close_session()
+            self._session.close_session()
 
-    async def search_user_notes(
+    def search_user_notes(
         self, user_id: str, num: int = 30, cursor: str = ""
     ) -> dict[str, Any]:
-        """Fetch user's posted notes (listing API)."""
-        resp = await self._session.apis.note.search_user_notes(
+        resp = self._session.apis.note.search_user_notes(
             user_id=user_id, num=num, cursor=cursor
         )
-        return await resp.json()
+        return resp.json()
 
-    async def fetch_note_detail(
+    def fetch_note_detail(
         self, note_id: str, xsec_token: str
     ) -> dict[str, Any] | None:
-        """Fetch full note detail (feed API) for enrichment."""
         body = {
             "source_note_id": note_id,
             "image_formats": ["jpg", "webp", "avif"],
             "extra": {"need_body_topic": 1},
             "xsec_token": xsec_token,
         }
-        resp = await self._session.request(
-            method="post", url=_EDITH + _API_FEED, data=body
-        )
-        d = await resp.json()
+        resp = self._session.request(method="post", url=_EDITH + _API_FEED, data=body)
+        d = resp.json()
         if not (d.get("success") or d.get("msg") == "成功"):
             return None
         nc = (d.get("data", {}).get("items", []) or [{}])[0].get("note_card", {})
@@ -96,23 +96,16 @@ def fetch_notes(
     cursor: str = "",
     num: int = 30,
 ) -> dict[str, Any]:
-    """Fetch user's posted notes (synchronous wrapper)."""
-
-    async def _run() -> dict[str, Any]:
-        async with _XHSClient(cookies) as client:
-            result = await client.search_user_notes(
-                user_id=user_id, num=num, cursor=cursor
-            )
-            if result.get("success") or result.get("msg") == "成功":
-                rd = result.get("data") or {}
-                return {
-                    "notes": rd.get("notes", []),
-                    "has_more": rd.get("has_more", False),
-                    "cursor": rd.get("cursor", ""),
-                }
-            return {"notes": [], "has_more": False, "cursor": ""}
-
-    return asyncio.run(_run())
+    with _XHSClient(cookies) as client:
+        result = client.search_user_notes(user_id=user_id, num=num, cursor=cursor)
+        if result.get("success") or result.get("msg") == "成功":
+            rd = result.get("data") or {}
+            return {
+                "notes": rd.get("notes", []),
+                "has_more": rd.get("has_more", False),
+                "cursor": rd.get("cursor", ""),
+            }
+        return {"notes": [], "has_more": False, "cursor": ""}
 
 
 def fetch_note_detail(
@@ -120,10 +113,5 @@ def fetch_note_detail(
     xsec_token: str,
     cookies: dict[str, str],
 ) -> dict[str, Any] | None:
-    """Fetch full note detail (synchronous wrapper)."""
-
-    async def _run() -> dict[str, Any] | None:
-        async with _XHSClient(cookies) as client:
-            return await client.fetch_note_detail(note_id, xsec_token)
-
-    return asyncio.run(_run())
+    with _XHSClient(cookies) as client:
+        return client.fetch_note_detail(note_id, xsec_token)

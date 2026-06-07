@@ -1,16 +1,219 @@
-import configparser
+"""RedCrack encryption config — hardcoded values (no external INI file)."""
 
+from __future__ import annotations
+from typing import Any
+
+_CONFIG = {
+  "XHS_VERSION": {
+    "APP_ID": "xhs-pc-web",
+    "LANGUAGE_VERSION": "4.3.5",
+    "ARTIFACT_VERSION": "6.12.3",
+    "OS_SYSTEM": "Windows",
+    "GET_PLAT_FROM_CODE": 5,
+    "BASE64_TABLE": "ZmserbBoHQtNP+wOcza/LpngG8yJq42KWYj0DSfdikx3VT16IlUAFM97hECvuRX5"
+  },
+  "XS_ENCRYPT": {
+    "X3_BASE64_TABLE": "MfgqrsbcyzPQRStuvC7mn501HIJBo2DEFTKdeNOwxWXYZap89+/A4UVLhijkl63G",
+    "XOR_KEY": [
+      113,
+      163,
+      2,
+      37,
+      119,
+      147,
+      39,
+      29,
+      221,
+      39,
+      59,
+      206,
+      227,
+      228,
+      185,
+      141,
+      157,
+      121,
+      53,
+      225,
+      218,
+      51,
+      245,
+      118,
+      94,
+      46,
+      168,
+      175,
+      182,
+      220,
+      119,
+      165,
+      26,
+      73,
+      157,
+      35,
+      182,
+      124,
+      32,
+      102,
+      0,
+      37,
+      134,
+      12,
+      191,
+      19,
+      212,
+      84,
+      13,
+      146,
+      73,
+      127,
+      88,
+      104,
+      108,
+      87,
+      78,
+      80,
+      143,
+      70,
+      225,
+      149,
+      99,
+      68,
+      243,
+      145,
+      57,
+      191,
+      79,
+      175,
+      34,
+      163,
+      238,
+      241,
+      32,
+      183,
+      146,
+      88,
+      20,
+      91,
+      47,
+      235,
+      81,
+      147,
+      182,
+      71,
+      134,
+      105,
+      150,
+      18,
+      152,
+      231,
+      155,
+      237,
+      202,
+      100,
+      110,
+      26,
+      105,
+      58,
+      146,
+      97,
+      84,
+      165,
+      167,
+      161,
+      189,
+      28,
+      240,
+      222,
+      219,
+      116,
+      47,
+      145,
+      122,
+      116,
+      122,
+      30,
+      56,
+      139,
+      35,
+      79,
+      34,
+      119,
+      81,
+      109,
+      183,
+      17,
+      96,
+      53,
+      67,
+      151,
+      48,
+      250,
+      97,
+      233,
+      130,
+      42,
+      14,
+      202,
+      123,
+      255,
+      114,
+      216
+    ],
+    "X3_PREFIX": "mns0301_"
+  },
+  "XSC_ENCRYPT": {
+    "B1_RC4_KEY": "xhswebmplfbt"
+  },
+  "XRAP_ENCRYPT": {
+    "XRAP_ENCRYPT_URL": [
+      "https://edith.xiaohongshu.com/api/sns/web/v1/homefeed",
+      "https://edith.xiaohongshu.com/api/sns/web/v1/search/notes",
+      "https://edith.xiaohongshu.com/api/sns/web/v1/user_posted",
+      "https://edith.xiaohongshu.com/api/sns/web/v1/feed",
+      "https://edith.xiaohongshu.com/api/sns/web/v1/comment/post"
+    ]
+  },
+  "XB1_ENCRYPT": {
+    "TRACE_ID_LENGTH": 16,
+    "VALID_CHARS": "abcdef0123456789"
+  },
+  "A1_ENCRYPT": {
+    "TRACE_ID_LENGTH": 30,
+    "VALID_CHARS": "abcdefghijklmnopqrstuvwxyz1234567890"
+  },
+  "GID_ENCRYPT": {
+    "DES_KEY": "zbp30y86",
+    "URL": "https://as.xiaohongshu.com/api/sec/v1/shield/webprofile",
+    "DATA_PALTFORM": "Windows",
+    "DATA_SDK_VERSION": "4.2.6",
+    "DATA_SVN": "2"
+  },
+  "HEADER": {
+    "DEFAULT_HEADER": {
+      "accept": "application/json, text/plain, */*",
+      "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+      "content-type": "application/json;charset=UTF-8",
+      "origin": "https://www.xiaohongshu.com",
+      "priority": "u=1, i",
+      "referer": "https://www.xiaohongshu.com/",
+      "sec-ch-ua": "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": "\"Windows\"",
+      "sec-fetch-dest": "empty",
+      "sec-fetch-mode": "cors",
+      "sec-fetch-site": "same-site",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    }
+  }
+}
 
 class Config:
-    def __init__(self):
-        self.config = configparser.ConfigParser()
-        self.config.read('request/web/encrypt/web_encrypt_config.ini', encoding='utf-8')
-    
-    def get(self, section: str, key: str, fallback=None):
-        """
-        获取配置项的通用方法
-        """
-        return eval(self.config.get(section, key, fallback=fallback))
-    
-# 单例模式
+    """RedCrack encryption config — values are hardcoded in _CONFIG dict."""
+
+    def get(self, section: str, key: str, fallback: Any = None) -> Any:
+        return _CONFIG.get(section, {}).get(key, fallback)
+
+
+# Singleton — same interface as original config.py
 xhs_config = Config()

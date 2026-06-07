@@ -1,5 +1,3 @@
-import asyncio
-import aiohttp
 
 from typing import Optional, TYPE_CHECKING
 if TYPE_CHECKING:
@@ -14,7 +12,7 @@ class Comments:
         self.session = session
 
     # 获取笔记评论列表
-    async def get_comments(self,  note_id: str, xsec_token: str, cursor: str = "", top_comment_id: str = "",  image_formats:str = "jpg,webp,avif") -> aiohttp.ClientResponse:
+    def get_comments(self,  note_id: str, xsec_token: str, cursor: str = "", top_comment_id: str = "",  image_formats:str = "jpg,webp,avif") :
         """获取笔记评论列表
 
         Args:
@@ -36,10 +34,10 @@ class Comments:
             "xsec_token": xsec_token
             }
         
-        return await self.session.request(method="get", url=url, params=params)
+        return self.session.request(method="get", url=url, params=params)
 
     # 获取子评论列表
-    async def get_sub_comments(self, note_id: str, root_comment_id: str, num: int = 30, cursor: str = "") -> aiohttp.ClientResponse:
+    def get_sub_comments(self, note_id: str, root_comment_id: str, num: int = 30, cursor: str = "") :
         """获取子评论列表
 
         Args:
@@ -58,10 +56,10 @@ class Comments:
             "num": num,
             "cursor": cursor
         }
-        return await self.session.request("get", url, params)
+        return self.session.request("get", url, params)
 
     # 创建评论
-    async def create_comment(self, note_id: str, content: str, at_users: Optional[list] = None) -> aiohttp.ClientResponse:
+    def create_comment(self, note_id: str, content: str, at_users: Optional[list] = None) :
         """发表评论
 
         Args:
@@ -78,10 +76,10 @@ class Comments:
             "content": content,
             "at_users": at_users or []
         }
-        return await self.session.request("post", url, data=data)
+        return self.session.request("post", url, data=data)
 
     # 回复评论
-    async def reply_comment(self, note_id: str, comment_id: str, content: str, at_users: Optional[list] = None) -> aiohttp.ClientResponse:
+    def reply_comment(self, note_id: str, comment_id: str, content: str, at_users: Optional[list] = None) :
         """回复评论
 
         Args:
@@ -100,10 +98,10 @@ class Comments:
             "target_comment_id": comment_id,
             "at_users": at_users or []
         }
-        return await self.session.request("post", url, data=data)
+        return self.session.request("post", url, data=data)
 
     # 删除评论
-    async def delete_comment(self, note_id: str, comment_id: str) -> aiohttp.ClientResponse:
+    def delete_comment(self, note_id: str, comment_id: str) :
         """删除评论
 
         Args:
@@ -118,10 +116,10 @@ class Comments:
             "note_id": note_id,
             "comment_id": comment_id
         }
-        return await self.session.request("post", url, data)
+        return self.session.request("post", url, data)
 
     # 点赞评论
-    async def like_comment(self, note_id: str, comment_id: str) -> aiohttp.ClientResponse:
+    def like_comment(self, note_id: str, comment_id: str) :
         """点赞评论 如果是二级评论，直接填写需要点赞的子评论ID即可
 
         Args:
@@ -136,10 +134,10 @@ class Comments:
             'note_id': note_id,
             'comment_id': comment_id
         }
-        return await self.session.request(method="post", url=url, data=data)
+        return self.session.request(method="post", url=url, data=data)
 
     # 取消点赞评论
-    async def cancel_like_comment(self, note_id: str, comment_id: str) -> aiohttp.ClientResponse:
+    def cancel_like_comment(self, note_id: str, comment_id: str) :
         """取消点赞评论
 
         Args:
@@ -154,10 +152,10 @@ class Comments:
             "note_id": note_id,
             "comment_id": comment_id
         }
-        return await self.session.request("post", url=url, data=data)
+        return self.session.request("post", url=url, data=data)
 
     # 获取笔记所有评论(包括子评论)
-    async def get_all_comments(self, note_id: str, xsec_token: str, crawl_interval: int = 2, max_crawl_times: int = 3) -> str:
+    def get_all_comments(self, note_id: str, xsec_token: str, crawl_interval: int = 2, max_crawl_times: int = 3) -> str:
         """获取笔记所有评论(包括子评论)
 
         Args:
@@ -177,8 +175,8 @@ class Comments:
         while comments_has_more and now_times < max_crawl_times:
 
             now_times += 1
-            comments_res = await self.get_comments(note_id, xsec_token, comments_cursor)
-            res_json = await comments_res.json()
+            comments_res = self.get_comments(note_id, xsec_token, comments_cursor)
+            res_json = comments_res.json()
             comments_json = res_json['data']
             comments_has_more = comments_json.get("has_more", False)
             comments_cursor = comments_json.get("cursor", "")
@@ -197,7 +195,7 @@ class Comments:
 
                 # while sub_comments_has_more:
                 #     page_num = 30
-                #     sub_comments_res = await self.get_sub_comments(
+                #     sub_comments_res = self.get_sub_comments(
                 #         note_id,
                 #         comment["id"],
                 #         num=page_num,
@@ -208,11 +206,12 @@ class Comments:
                 #     sub_comment_cursor = sub_comments_res["cursor"]
                 #     result.extend(sub_comments)
 
-                #     await asyncio.sleep(crawl_interval)
+                #     asyncio.sleep(crawl_interval)
 
-            await asyncio.sleep(crawl_interval)
+            asyncio.sleep(crawl_interval)
 
         return f"笔记:{note_id}, 获取到{len(result)}"
     
+
 
 

@@ -1,4 +1,3 @@
-import aiohttp
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -12,7 +11,7 @@ class User:
         self.session = session  # 保存会话引用
 
     # 关注用户
-    async def follow_user(self, target_user_id: str) -> aiohttp.ClientResponse:
+    def follow_user(self, target_user_id: str) :
         """关注用户
 
         Args:
@@ -25,5 +24,6 @@ class User:
         data = {
             "target_user_id": target_user_id
         }
-        return await self.session.request(method="post", url=url, data=data)
+        return self.session.request(method="post", url=url, data=data)
+
 
