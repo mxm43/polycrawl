@@ -1,4 +1,4 @@
-"""Xiaohongshu API signer — uses RedCrack synchronously."""
+﻿"""Xiaohongshu API signer 鈥?uses RedCrack synchronously."""
 
 from __future__ import annotations
 
@@ -30,13 +30,14 @@ class _XHSClient:
     create session (full init), then override cookies with config values.
     """
 
-    def __init__(self, cookies: dict[str, str]) -> None:
+    def __init__(self, cookies: dict[str, str], proxy: str | None = None) -> None:
         self._cookies = dict(cookies)
+        self._proxy = proxy
         self._session: XHS_Session | None = None
 
     def __enter__(self) -> _XHSClient:
         web_session = self._cookies.get("web_session", "")
-        self._session = create_xhs_session(web_session=web_session)
+        self._session = create_xhs_session(web_session=web_session, proxy=self._proxy)
         # Clear all cookies then set config cookies (avoid CookieConflict)
         for key in list(self._session._session.cookies.keys()):
             self._session._session.cookies.pop(key)
@@ -67,7 +68,7 @@ class _XHSClient:
         }
         resp = self._session.request(method="post", url=_EDITH + _API_FEED, data=body)
         d = resp.json()
-        if not (d.get("success") or d.get("msg") == "成功"):
+        if not (d.get("success") or d.get("msg") == "鎴愬姛"):
             return None
         nc = (d.get("data", {}).get("items", []) or [{}])[0].get("note_card", {})
         if not nc:
@@ -95,10 +96,11 @@ def fetch_notes(
     cookies: dict[str, str],
     cursor: str = "",
     num: int = 30,
+    proxy: str | None = None,
 ) -> dict[str, Any]:
-    with _XHSClient(cookies) as client:
+    with _XHSClient(cookies, proxy=proxy) as client:
         result = client.search_user_notes(user_id=user_id, num=num, cursor=cursor)
-        if result.get("success") or result.get("msg") == "成功":
+        if result.get("success") or result.get("msg") == "鎴愬姛":
             rd = result.get("data") or {}
             return {
                 "notes": rd.get("notes", []),
@@ -112,6 +114,7 @@ def fetch_note_detail(
     note_id: str,
     xsec_token: str,
     cookies: dict[str, str],
+    proxy: str | None = None,
 ) -> dict[str, Any] | None:
-    with _XHSClient(cookies) as client:
+    with _XHSClient(cookies, proxy=proxy) as client:
         return client.fetch_note_detail(note_id, xsec_token)

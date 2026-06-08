@@ -105,7 +105,7 @@ _tid_cache: tuple | None = None
 _TID_LOCK = threading.Lock()
 
 
-def _ensure_tid_cache() -> None:
+def _ensure_tid_cache(proxy: str | None = None) -> None:
     """Initialize the ClientTransaction cache once (thread-safe)."""
     global _tid_cache
     if _tid_cache is not None:
@@ -118,7 +118,10 @@ def _ensure_tid_cache() -> None:
             from x_client_transaction import ClientTransaction
             from x_client_transaction.utils import generate_headers, get_ondemand_file_url
 
-            session = httpx.Client(follow_redirects=True, timeout=httpx.Timeout(15))
+            client_kwargs = {"follow_redirects": True, "timeout": httpx.Timeout(15)}
+            if proxy:
+                client_kwargs["proxy"] = proxy
+            session = httpx.Client(**client_kwargs)
             home_resp = session.get("https://x.com")
             home_soup = bs4.BeautifulSoup(home_resp.content, "html.parser")
             ondemand_url = get_ondemand_file_url(response=home_soup)
@@ -130,9 +133,9 @@ def _ensure_tid_cache() -> None:
             _tid_cache = (None, None)
 
 
-def _add_tid_header(headers: dict[str, str], url: str) -> None:
+def _add_tid_header(headers: dict[str, str], url: str, proxy: str | None = None) -> None:
     """Add ``x-client-transaction-id`` header if the cache is available."""
-    _ensure_tid_cache()
+    _ensure_tid_cache(proxy=proxy)
     ct, home_soup = _tid_cache if _tid_cache else (None, None)
     if ct is None:
         return
@@ -312,9 +315,8 @@ class TwitterProvider(BaseProvider, SyncRateLimiter):
     ) -> list[dict[str, Any]]:
         screen_name = _extract_screen_name(account_url)
         site_cfg = self._get_site_config()
-        platform_cfg = site_cfg.get("platform") or {}
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (platform_cfg.get("cookies") or {}).items()
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items()
             if v and k != "__example__"
         }
 
@@ -364,9 +366,8 @@ class TwitterProvider(BaseProvider, SyncRateLimiter):
     def build_download_request(self, account_url: str) -> dict[str, Any]:
         """Return cookies for Twitter media download requests."""
         site_cfg = self._get_site_config()
-        platform_cfg = site_cfg.get("platform") or {}
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (platform_cfg.get("cookies") or {}).items()
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items()
             if v and k != "__example__"
         }
         return {"headers": {}, "cookies": cookies}
@@ -410,7 +411,7 @@ class TwitterProvider(BaseProvider, SyncRateLimiter):
         self.rate_limit_with_jitter(tick)
         url_base = f"{_API_BASE}/{_USER_BY_SCREEN_NAME_OP}/UserByScreenName"
         headers = _build_headers(cookies)
-        _add_tid_header(headers, url_base)
+        _add_tid_header(headers, url_base, proxy=self.proxy)
         variables = json.dumps({
             "screen_name": screen_name,
             "withSafetyModeUserFields": False,
@@ -449,7 +450,7 @@ class TwitterProvider(BaseProvider, SyncRateLimiter):
         """
         headers = _build_headers(cookies)
         url_base = f"{_API_BASE}/{_USER_MEDIA_OP}/UserTweets"
-        _add_tid_header(headers, url_base)
+        _add_tid_header(headers, url_base, proxy=self.proxy)
 
         variables = {
             "userId": user_id,

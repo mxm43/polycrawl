@@ -92,6 +92,8 @@ class Scheduler:
         self._live_shortest_tier: str = "30s"
         # Live strategy tick from config
         self._live_tick: str = "1s"
+        # Pre-resolved per-platform (tick, jitter) for live_record dispatch
+        self._live_resolved: dict[str, tuple[str, tuple[str, str]]] = {}
 
     # ?? lifecycle ????????????????????????????????????????????????
 
@@ -273,14 +275,20 @@ class Scheduler:
                 # Shortest tier = first tier with after=0d
                 if self._live_adapt_cfg and self._live_adapt_cfg.tiers:
                     self._live_shortest_tier = self._live_adapt_cfg.tiers[0].interval
-                # Resolve tick: entry.request → hardcoded default
-                req = entry.request
-                self._live_tick = req.tick if req and req.tick else "1s"
-                # Resolve jitter: entry.request → hardcoded default
-                raw_jitter = req.jitter if req and req.jitter else ("0s", "0.5s")
-                if raw_jitter and len(raw_jitter) == 2:
-                    self._live_jitter_min_sec = parse_duration_to_seconds(raw_jitter[0])
-                    self._live_jitter_max_sec = parse_duration_to_seconds(raw_jitter[1])
+                # Pre-resolve per-platform tick/jitter for live dispatch
+                # Priority: entry.platforms > entry.request > site request > hardcoded
+                r = entry.request
+                self._live_resolved = {}
+                for platform, site_cfg in state.sites.items():
+                    site_req = site_cfg.get("request") or {}
+                    pr = (r.platforms.get(platform) if r and r.platforms else None)
+                    tick = (pr.tick if pr and pr.tick else None) or \
+                           (r.tick if r and r.tick else None) or \
+                           site_req.get("tick") or "1s"
+                    jitter = (pr.jitter if pr and pr.jitter else None) or \
+                             (r.jitter if r and r.jitter else None) or \
+                             tuple(site_req.get("jitter", ("0s", "0.5s")))
+                    self._live_resolved[platform] = (tick, jitter)
                 break
 
     @staticmethod
@@ -442,9 +450,17 @@ class Scheduler:
                     continue
                 for account_id in to_check:
                     async with session_factory() as session:
-                        params_dict = {"tick": self._live_tick, "account_id": account_id}
-                        if self._live_jitter_min_sec is not None and self._live_jitter_max_sec is not None:
-                            params_dict["jitter"] = [self._live_jitter_min_sec, self._live_jitter_max_sec]
+                        acc = await session.get(Account, account_id)
+                        plat = acc.platform if acc else None
+                        rcfg = self._live_resolved.get(plat) if plat else None
+                        live_tick = rcfg[0] if rcfg else "1s"
+                        raw_jitter = rcfg[1] if rcfg else ("0s", "0.5s")
+                        params_dict = {"tick": live_tick, "account_id": account_id}
+                        if raw_jitter and len(raw_jitter) == 2:
+                            params_dict["jitter"] = [
+                                parse_duration_to_seconds(raw_jitter[0]),
+                                parse_duration_to_seconds(raw_jitter[1]),
+                            ]
                         task = Task(
                             account_id=account_id,
                             task_type="live_record",
@@ -471,7 +487,7 @@ class Scheduler:
             except Exception:
                 logger.exception("[scheduler] live dispatch error")
 
-    # ?? dispatch (content_fetch only) ???????????????????????????????
+    # dispatch (content_fetch only)
     # Live_record no longer uses this path; see _live_dispatch_loop.
 
     async def _dispatch(self, idx: int, entry, state) -> None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -28,8 +28,8 @@ class UrlEntry(BaseModel):
 
 class RequestConfig(BaseModel):
     """API 请求速率配置。可定义在 site config 或 task entry 中。"""
-    tick: str = Field(default="1s", description="API 调用最小间隔，如 1s、2s、30s")
-    jitter: tuple[str, str] = Field(default=("0s", "0s"), description="请求间隔随机抖动范围，如 ['1s', '2s']")
+    tick: Optional[str] = Field(default=None, description="API 调用最小间隔，如 1s、2s、30s")
+    jitter: Optional[tuple[str, str]] = Field(default=None, description="请求间隔随机抖动范围，如 ['1s', '2s']")
     platforms: dict[str, RequestConfig] = Field(
         default_factory=dict,
         description="按平台覆写 tick/jitter，key 为平台名，如 {\"douyin\": {\"tick\": \"3s\"}}",
@@ -37,10 +37,36 @@ class RequestConfig(BaseModel):
 
     @field_validator("tick")
     @classmethod
+    def _validate_tick(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not _INTERVAL_RE.match(value):
+            raise ValueError(f"tick must be like 30s, 1m, 5m, got: {value!r}")
+        return value
+
+
+class SiteRequestConfig(BaseModel):
+    """Platform site-level request config — tick is required."""
+    tick: str = Field(description="API 调用最小间隔，如 10s、30s（必填）")
+    jitter: tuple[str, str] = Field(default=("0s", "0s"), description="请求间隔随机抖动范围，如 ['-1s', '4s']")
+
+    @field_validator("tick")
+    @classmethod
     def _validate_tick(cls, value: str) -> str:
         if not _INTERVAL_RE.match(value):
             raise ValueError(f"tick must be like 30s, 1m, 5m, got: {value!r}")
         return value
+
+
+class SiteConfig(BaseModel):
+    """Per-platform site config (sites/*.jsonc). Validated at startup."""
+    enabled: bool = True
+    cookies: dict[str, str] = Field(default_factory=dict)
+    headers: dict[str, str] = Field(default_factory=dict)
+    request: SiteRequestConfig = Field(description="请求配置（tick 为必填）")
+    content_fetch: dict[str, Any] = Field(default_factory=dict)
+    download: dict[str, Any] = Field(default_factory=dict)
+    proxy: str | None = None
 
 
 class StrategyOverride(BaseModel):
@@ -139,24 +165,6 @@ class CreatorsFile(BaseModel):
 
 class BaseStorageConfig(BaseModel):
     media_base_path: str
-
-
-class BaseConfig(BaseModel):
-    config_version: int = 1
-    storage: BaseStorageConfig
-    global_config: dict[str, Any] = Field(default_factory=dict, alias="global")
-    schedules: list[ScheduleEntry] = Field(default_factory=list, alias="tasks")
-    strategy: StrategyConfig = Field(alias="strategy")
-    download: DownloadConfig
-
-    model_config = {
-        "populate_by_name": True,
-    }
-
-
-class ConfigState(BaseModel):
-    base: BaseConfig
-    creators: CreatorsFile
 
 
 class BaseConfig(BaseModel):

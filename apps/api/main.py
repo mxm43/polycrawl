@@ -975,8 +975,7 @@ def login_status() -> list[dict[str, object]]:
             results.append({"platform": platform_name, "has_cookies": False, "error": "config_parse_failed"})
             continue
 
-        pf = cfg.get("platform") or {}
-        pc = pf.get("cookies") or {}
+        pc = cfg.get("cookies") or {}
         has_cookies = bool(pc and any(v for v in pc.values() if v and v != "{}"))
 
         status: dict[str, object] = {
@@ -1020,7 +1019,7 @@ def verify_platform_cookies(req: _VerifyRequest) -> dict[str, object]:
         return {"status": "error", "detail": f"Config parse failed: {e}"}
 
     cookies_dict: dict[str, str] = {
-        k: str(v) for k, v in (((cfg.get("platform") or {}).get("cookies") or {}).items())
+        k: str(v) for k, v in (cfg.get("cookies") or {}).items()
         if v
     }
     if not cookies_dict:

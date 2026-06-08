@@ -195,7 +195,7 @@ class WeiboProvider(BaseProvider, SyncRateLimiter):
         page: int = int(task_params.get("cursor") or 1)
         site_cfg = _load_site_config()
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (site_cfg.get("platform") or {}).get("cookies", {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
         }
         tick = str(task_params.get("tick") or "10s")
 
@@ -480,7 +480,7 @@ class WeiboProvider(BaseProvider, SyncRateLimiter):
         }
         site_cfg = _load_site_config()
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (site_cfg.get("platform") or {}).get("cookies", {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
             if k in ("_T_WM", "SUB", "SUBP", "SCF")
         }
         try:
@@ -526,7 +526,7 @@ class WeiboProvider(BaseProvider, SyncRateLimiter):
         }
         site_cfg = _load_site_config()
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (site_cfg.get("platform") or {}).get("cookies", {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
             if k in ("_T_WM", "SUB", "SUBP", "SCF")
         }
         try:

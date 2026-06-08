@@ -80,9 +80,8 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
         self._tick = str(task_params.get("tick") or "10s")
 
         site_cfg = _load_site_config()
-        platform_cfg: dict[str, Any] = site_cfg.get("platform") or {}
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (platform_cfg.get("cookies") or {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
         }
 
         cursor: int = int(task_params.get("cursor") or 0)
@@ -148,15 +147,16 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
     ) -> dict[str, Any] | None:
         """Refresh one content item using detail endpoint (legacy-compatible fallback)."""
         site_cfg = _load_site_config()
-        platform_cfg: dict[str, Any] = site_cfg.get("platform") or {}
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (platform_cfg.get("cookies") or {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
         }
         if not cookies:
             return None
 
         # Use stored tick from fetch_content_items, or fallback to config
         tick: str = getattr(self, "_tick", None) or _get_strategy_tick(_load_base_config())
+
+        proxy: str | None = site_cfg.get("proxy") or None
         self.rate_limit_with_jitter(tick)
 
         items = asyncio.run(fetch_post_detail(content_id, cookies, tick=tick))
@@ -215,9 +215,8 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
 
     def build_download_request(self, account_url: str) -> dict[str, Any]:
         site_cfg = _load_site_config()
-        platform_cfg: dict[str, Any] = site_cfg.get("platform") or {}
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (platform_cfg.get("cookies") or {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
         }
         cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items() if v)
         headers = {
@@ -260,12 +259,12 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
         """
         site_cfg = _load_site_config()
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (site_cfg.get("platform") or {}).get("cookies", {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
         }
         base_cfg = _load_base_config()
         tick: str = str(task_params.get("tick") or _get_strategy_tick(base_cfg))
         jitter = task_params.get("jitter")
-        self.rate_limit_with_jitter(tick, jitter, label="live-detect")
+        self.rate_limit_with_jitter(tick, jitter, bucket="live", label="live-detect")
 
         try:
             room_id = _extract_room_id(account_url)
@@ -329,7 +328,7 @@ class DouyinProvider(BaseProvider, SyncRateLimiter):
         base_cfg = _load_base_config()
         tick: str = str(task_params.get("tick") or _get_strategy_tick(base_cfg))
         jitter = task_params.get("jitter")
-        self.rate_limit_with_jitter(tick, jitter, label="live-resolve")
+        self.rate_limit_with_jitter(tick, jitter, bucket="live", label="live-resolve")
 
         direct_url = str(task_params.get("stream_url") or "").strip()
         if direct_url:

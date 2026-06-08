@@ -19,6 +19,7 @@ from services.worker.runtime import get_media_root
 
 
 _LOG = logging.getLogger(__name__)
+_ACCOUNT_KEY_PREFIX = "polycrawl:live:stop:"
 _BG_DOWNLOAD_TASKS: set[asyncio.Task] = set()
 
 

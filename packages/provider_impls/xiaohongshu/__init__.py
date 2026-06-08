@@ -145,7 +145,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
     def healthcheck(self) -> dict[str, str]:
         return {"platform": self.platform, "status": "ok"}
 
-    # 鈹€鈹€ Content fetch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Content fetch
 
     def fetch_content_items(
         self,
@@ -155,33 +155,38 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
         user_id = _extract_user_id(account_url)
         site_cfg = _load_site_config()
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (site_cfg.get("platform") or {}).get("cookies", {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
         }
+        proxy: str | None = site_cfg.get("proxy") or None
 
         tick: str = str(task_params.get("tick") or "1s")
 
         # Rate-limit before listing API call
         self.rate_limit_with_jitter(tick, task_params.get("jitter"), label="listing")
         cursor: str = str(task_params.get("cursor") or "")
-        result = fetch_notes(user_id, cookies, cursor=cursor)
+        result = fetch_notes(user_id, cookies, cursor=cursor, proxy=proxy)
         raw_notes = result.get("notes", [])
 
-        # 鈹€鈹€ Enrich each note via feed API 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Enrich each note via feed API
+        # Reuse a single session for all note detail calls within this account,
+        # matching the RedCrack test flow (one session, many requests).
         enriched_notes: list[dict[str, Any]] = []
-        for note in raw_notes:
-            note_id = str(note.get("note_id") or "")
-            xsec_token = str(note.get("xsec_token") or "")
-            if note_id and xsec_token and cookies:
-                try:
-                    self.rate_limit_with_jitter(tick, task_params.get("jitter"), label="enrich")
-                    detail = fetch_note_detail(note_id, xsec_token, cookies)
-                    if detail:
-                        note["_enriched"] = detail
-                except RuntimeError:
-                    raise
-                except Exception:
-                    pass
-            enriched_notes.append(note)
+        from packages.provider_impls.xiaohongshu.xhs_signer import _XHSClient
+        with _XHSClient(cookies, proxy=proxy) as client:
+            for note in raw_notes:
+                note_id = str(note.get("note_id") or "")
+                xsec_token = str(note.get("xsec_token") or "")
+                if note_id and xsec_token and cookies:
+                    try:
+                        self.rate_limit_with_jitter(tick, task_params.get("jitter"), label="enrich")
+                        detail = client.fetch_note_detail(note_id, xsec_token)
+                        if detail:
+                            note["_enriched"] = detail
+                    except RuntimeError:
+                        raise
+                    except Exception:
+                        pass
+                enriched_notes.append(note)
 
         items = self._parse_notes(enriched_notes)
         has_more = result.get("has_more", False)
@@ -295,7 +300,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
 
         return results
 
-    # 鈹€鈹€ Pagination state 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Pagination state
 
     @property
     def next_cursor(self) -> str:
@@ -305,7 +310,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
     def has_more(self) -> bool:
         return getattr(self, "_has_more", False)
 
-    # 鈹€鈹€ Live (not applicable) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Live (not applicable)
 
     def detect_live_status(self, task_params: dict[str, Any], account_url: str) -> bool:
         return False
@@ -328,7 +333,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
         """
         site_cfg = _load_site_config()
         cookies: dict[str, str] = {
-            k: str(v) for k, v in (site_cfg.get("platform") or {}).get("cookies", {}).items() if v
+            k: str(v) for k, v in (site_cfg.get("cookies") or {}).items() if v
         }
         if not cookies:
             return None
@@ -356,7 +361,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
 
         return result if result else None
 
-    # 鈹€鈹€ Download headers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Download headers
 
     def build_download_request(self, account_url: str) -> dict[str, Any]:
         return {
@@ -373,7 +378,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
             "cookies": {},
         }
 
-    # 鈹€鈹€ Account directory 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Account directory
 
     def build_account_dir(self, account: Any) -> str:
         """Use the user_id extracted from account_url as directory name."""
@@ -392,7 +397,7 @@ class XiaohongshuProvider(BaseProvider, SyncRateLimiter):
             return _safe(alias, 50)
         return _safe(account_url, 80) or "account"
 
-    # 鈹€鈹€ URL parsing 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # URL parsing
 
     def extract_account_key(self, account_url: str, account_type: str) -> str:
         return _extract_user_id(account_url)
